@@ -2,6 +2,8 @@ import { UserProfile } from "@/components/user-profile";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CanvasSidebar } from "@/components/canvas/CanvasSidebar";
+import { NodeProperties } from "@/components/canvas/NodeProperties";
 
 export default function EditorLayout({
   children,
@@ -9,9 +11,9 @@ export default function EditorLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-full flex flex-col flex-1 w-full">
+    <div className="h-screen flex flex-col w-full overflow-hidden">
       {/* Navbar */}
-      <header className="h-14 border-b flex items-center justify-between px-4 shrink-0 bg-card">
+      <header className="h-14 border-b flex items-center justify-between px-4 shrink-0 bg-card z-10 relative">
         <div className="flex items-center gap-4">
           <Link href="/dashboard" passHref>
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
@@ -28,10 +30,7 @@ export default function EditorLayout({
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-64 border-r p-4 shrink-0 bg-card overflow-y-auto">
-          <h2 className="text-sm font-semibold mb-4 text-muted-foreground uppercase">Components</h2>
-          {/* Component list will go here */}
-        </aside>
+        <CanvasSidebar />
 
         {/* Canvas (React Flow) */}
         <main className="flex-1 relative bg-muted/20">
@@ -39,10 +38,7 @@ export default function EditorLayout({
         </main>
 
         {/* Properties Panel */}
-        <aside className="w-80 border-l p-4 shrink-0 bg-card overflow-y-auto">
-          <h2 className="text-sm font-semibold mb-4 text-muted-foreground uppercase">Properties</h2>
-          {/* Properties will go here */}
-        </aside>
+        <NodeProperties />
       </div>
 
       {/* Bottom Status Bar */}

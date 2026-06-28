@@ -38,8 +38,17 @@ export const projectService = {
     const response = await api.put(`/api/projects/${id}`, data);
     return response.data;
   },
-
+  
   deleteProject: async (id: string): Promise<void> => {
     await api.delete(`/api/projects/${id}`);
   },
+
+  saveCanvas: async (id: string, data: any): Promise<void> => {
+    await api.put(`/api/projects/${id}/canvas`, data);
+  },
+
+  getCanvas: async (id: string): Promise<any> => {
+    const response = await api.get(`/api/projects/${id}/canvas`);
+    return response.data;
+  }
 };

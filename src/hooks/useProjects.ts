@@ -44,13 +44,36 @@ export const useUpdateProject = () => {
   });
 };
 
-export const useDeleteProject = () => {
+export function useDeleteProject() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => projectService.deleteProject(id),
+    mutationFn: projectService.deleteProject,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });
-};
+}
+
+export function useCanvas(id: string) {
+  const { token, _hasHydrated } = useAuthStore();
+  
+  return useQuery({
+    queryKey: ["canvas", id],
+    queryFn: () => projectService.getCanvas(id),
+    enabled: !!id && !!token && _hasHydrated,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useSaveCanvas() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string, data: any }) => projectService.saveCanvas(id, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["canvas", variables.id] });
+    },
+  });
+}
