@@ -20,8 +20,10 @@ import { useCanvasStore, SystemNode } from '@/store/canvasStore';
 import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { CanvasToolbar } from './CanvasToolbar';
+import { SimulationControls } from './SimulationControls';
 import { SystemNodeType, SystemNodeData } from '@/types/node';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useSimulation } from '@/hooks/useSimulation';
 import { ContextMenu } from './ContextMenu';
 
 const nodeTypes = {
@@ -35,6 +37,9 @@ const edgeTypes = {
 export function Canvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
+  
+  // Tick simulator clock loop
+  useSimulation();
   
   const {
     activeProjectId,
@@ -239,6 +244,7 @@ export function Canvas() {
   return (
     <div className="w-full h-full relative animate-fade-in" ref={reactFlowWrapper}>
       <CanvasToolbar />
+      <SimulationControls />
       
       <ReactFlow
         nodes={nodes}

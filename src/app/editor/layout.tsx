@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { CanvasSidebar } from "@/components/canvas/CanvasSidebar";
 import { NodeProperties } from "@/components/canvas/NodeProperties";
 import { SaveIndicator } from "@/components/canvas/SaveIndicator";
+import { SimulationDashboard } from "@/components/canvas/SimulationDashboard";
+import { ProjectNameHeader } from "@/components/canvas/ProjectNameHeader";
 
 export default function EditorLayout({
   children,
@@ -23,7 +25,7 @@ export default function EditorLayout({
             </Button>
           </Link>
           <div className="h-4 w-px bg-border"></div>
-          <h1 className="font-semibold">System Design Simulator</h1>
+          <ProjectNameHeader />
           <div className="h-4 w-px bg-border"></div>
           <SaveIndicator />
         </div>
@@ -40,8 +42,9 @@ export default function EditorLayout({
           {children}
         </main>
 
-        {/* Properties Panel */}
+        {/* Properties Panel & Simulation Dashboard */}
         <NodeProperties />
+        <SimulationDashboard />
       </div>
 
       {/* Bottom Status Bar */}

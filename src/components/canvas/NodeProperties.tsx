@@ -2,12 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { useCanvasStore } from '@/store/canvasStore';
+import { useSimulationStore } from '@/store/simulationStore';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 
 export function NodeProperties() {
+  const isRunning = useSimulationStore(state => state.isRunning);
+  
   const { 
     activeProjectId, 
     projects, 
@@ -50,7 +53,9 @@ export function NodeProperties() {
       setEdgeLabel(labelVal);
       setEdgeStyle((selectedEdge.data?.type as string) || 'smoothstep');
     }
-  }, [selectedEdge?.id, selectedEdge?.label, selectedEdge?.data?.type]);
+  }, [selectedNode, selectedEdge]);
+
+  if (isRunning) return null;
 
   if (!selectedNode && !selectedEdge) {
     return (

@@ -8,6 +8,7 @@ import {
   getStraightPath 
 } from '@xyflow/react';
 import { useCanvasStore } from '@/store/canvasStore';
+import { useSimulationStore } from '@/store/simulationStore';
 import { Trash2, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,8 @@ export function CustomEdge({
   data,
 }: EdgeProps) {
   const { removeEdge, setSelectedEdgeId, activeProjectId, projects } = useCanvasStore();
+  const activeAnims = useSimulationStore(state => state.animatingEdges[id]);
+  const speed = useSimulationStore(state => state.speed);
 
   const pathType = data?.type || 'smoothstep';
 
@@ -78,6 +81,7 @@ export function CustomEdge({
   const targetNode = nodes.find((n) => n.id === target);
 
   const displayLabel = label || (data?.label as string);
+  const animDuration = `${0.4 / speed}s`;
 
   return (
     <>
@@ -92,6 +96,22 @@ export function CustomEdge({
             : "stroke-zinc-400 stroke-[2px] hover:stroke-blue-500/50 dark:stroke-zinc-700 dark:hover:stroke-blue-500/50"
         )}
       />
+      {edgePath && !edgePath.includes('NaN') && (activeAnims || []).map((anim) => (
+        <circle 
+          key={anim.id} 
+          r="4.5" 
+          fill="#3b82f6" 
+          visibility="hidden"
+          className="filter drop-shadow-[0_0_4px_rgba(59,130,246,0.8)] pointer-events-none"
+        >
+          <animateMotion
+            dur={animDuration}
+            fill="freeze"
+            path={edgePath}
+          />
+          <set attributeName="visibility" from="hidden" to="visible" begin="0.01s" fill="freeze" />
+        </circle>
+      ))}
       <EdgeLabelRenderer>
         {/* Render persistent label when not selected */}
         {!selected && displayLabel && (
