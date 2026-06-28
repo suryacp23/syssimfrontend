@@ -14,7 +14,7 @@ import { Project } from "@/services/projectService";
 import { Plus, FolderOpen } from "lucide-react";
 
 export default function DashboardPage() {
-  const { user, token } = useAuthStore();
+  const { user, token, _hasHydrated } = useAuthStore();
   const router = useRouter();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -24,14 +24,14 @@ export default function DashboardPage() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   useEffect(() => {
-    if (!token) {
+    if (_hasHydrated && !token) {
       router.push("/login");
     }
-  }, [token, router]);
+  }, [token, router, _hasHydrated]);
 
   const { data: projects, isLoading, isError, refetch } = useProjects();
 
-  if (!token || !user) {
+  if (!_hasHydrated || !token || !user) {
     return null; // Avoid flashing content before redirect
   }
 

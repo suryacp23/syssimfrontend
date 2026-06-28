@@ -1,11 +1,26 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useProject } from "@/hooks/useProjects";
+import { useAuthStore } from "@/store/AuthStore";
+import { useEffect } from "react";
 
 export default function EditorPage() {
   const { id } = useParams();
+  const router = useRouter();
+  const { token, _hasHydrated } = useAuthStore();
+  
+  useEffect(() => {
+    if (_hasHydrated && !token) {
+      router.push("/login");
+    }
+  }, [_hasHydrated, token, router]);
+
   const { data: project, isLoading, isError } = useProject(id as string);
+
+  if (!_hasHydrated || !token) {
+    return null;
+  }
 
   if (isLoading) {
     return <div className="p-8">Loading project...</div>;

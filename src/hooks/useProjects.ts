@@ -1,18 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectService, CreateProjectRequest, UpdateProjectRequest } from "@/services/projectService";
+import { useAuthStore } from "@/store/AuthStore";
 
 export const useProjects = () => {
+  const { _hasHydrated, token } = useAuthStore();
   return useQuery({
     queryKey: ["projects"],
     queryFn: projectService.getProjects,
+    enabled: _hasHydrated && !!token,
   });
 };
 
 export const useProject = (id: string) => {
+  const { _hasHydrated, token } = useAuthStore();
   return useQuery({
     queryKey: ["project", id],
     queryFn: () => projectService.getProject(id),
-    enabled: !!id,
+    enabled: !!id && _hasHydrated && !!token,
   });
 };
 

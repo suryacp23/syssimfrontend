@@ -16,12 +16,14 @@ import {
 import { LogOut } from "lucide-react";
 import { useAuthStore } from "@/store/AuthStore";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function UserProfile() {
   const [mounted, setMounted] = useState(false);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setMounted(true);
@@ -29,6 +31,7 @@ export function UserProfile() {
 
   const handleLogout = () => {
     logout();
+    queryClient.clear();
     router.push("/"); // Redirect to home page
   };
 
