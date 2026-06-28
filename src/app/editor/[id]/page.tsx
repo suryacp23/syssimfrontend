@@ -1,7 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useProject, useCanvas } from "@/hooks/useProjects";
+import { useProject } from "@/hooks/useProjects";
+import { useDiagram } from "@/hooks/useDiagram";
 import { useAuthStore } from "@/store/AuthStore";
 import { useEffect } from "react";
 import { Canvas } from "@/components/canvas/Canvas";
@@ -29,22 +30,22 @@ export default function EditorPage() {
   }, [projectId, setActiveProject]);
 
   const { data: project, isLoading: isProjectLoading, isError: isProjectError } = useProject(projectId);
-  const { data: canvasData, isLoading: isCanvasLoading } = useCanvas(projectId);
+  const { data: diagramData, isLoading: isDiagramLoading } = useDiagram(projectId);
 
   // Initialize store when data loads
   const loadedProjects = useCanvasStore((state) => state.loadedProjects);
 
   useEffect(() => {
-    if (canvasData && projectId && !loadedProjects[projectId]) {
-      setProjectData(projectId, canvasData.nodes || [], canvasData.edges || []);
+    if (diagramData && projectId && !loadedProjects[projectId]) {
+      setProjectData(projectId, diagramData.nodes || [], diagramData.edges || []);
     }
-  }, [canvasData, projectId, setProjectData, loadedProjects]);
+  }, [diagramData, projectId, setProjectData, loadedProjects]);
 
   if (!_hasHydrated || !token) {
     return null;
   }
 
-  if (isProjectLoading || isCanvasLoading) {
+  if (isProjectLoading || isDiagramLoading) {
     return <div className="p-8">Loading project...</div>;
   }
 

@@ -29,9 +29,11 @@ interface CanvasState {
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   clipboard: { nodes: SystemNode[]; edges: Edge[] } | null;
+  isDirty: Record<string, boolean>;
   
   setActiveProject: (projectId: string) => void;
   setProjectData: (projectId: string, nodes: SystemNode[], edges: Edge[]) => void;
+  setDirty: (projectId: string, isDirty: boolean) => void;
   
   onNodesChange: (changes: NodeChange<SystemNode>[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
@@ -66,12 +68,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   selectedNodeId: null,
   selectedEdgeId: null,
   clipboard: null,
+  isDirty: {},
 
   history: {},
   loadedProjects: {} as Record<string, boolean>,
 
   setActiveProject: (projectId: string) => {
-    const { projects, history } = get();
+    const { projects, history, isDirty } = get();
     // Initialize if it doesn't exist
     if (!projects[projectId]) {
       set({
@@ -85,6 +88,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         history: {
           ...history,
           [projectId]: { past: [], future: [] }
+        },
+        isDirty: {
+          ...isDirty,
+          [projectId]: false
         }
       });
     } else {
@@ -93,7 +100,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   pushState: () => {
-    const { activeProjectId, projects, history } = get();
+    const { activeProjectId, projects, history, isDirty } = get();
     if (!activeProjectId) return;
     
     const currentProjectData = projects[activeProjectId];
@@ -109,12 +116,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           past: [...projectHistory.past, snapshot].slice(-50),
           future: [],
         }
+      },
+      isDirty: {
+        ...isDirty,
+        [activeProjectId]: true
       }
     });
   },
 
   undo: () => {
-    const { activeProjectId, projects, history } = get();
+    const { activeProjectId, projects, history, isDirty } = get();
     if (!activeProjectId) return;
     
     const projectHistory = history[activeProjectId];
@@ -138,13 +149,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           future: [snapshot, ...projectHistory.future],
         }
       },
+      isDirty: {
+        ...isDirty,
+        [activeProjectId]: true
+      },
       selectedNodeId: null,
       selectedEdgeId: null,
     });
   },
 
   redo: () => {
-    const { activeProjectId, projects, history } = get();
+    const { activeProjectId, projects, history, isDirty } = get();
     if (!activeProjectId) return;
     
     const projectHistory = history[activeProjectId];
@@ -168,13 +183,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           future: newFuture,
         }
       },
+      isDirty: {
+        ...isDirty,
+        [activeProjectId]: true
+      },
       selectedNodeId: null,
       selectedEdgeId: null,
     });
   },
 
   setProjectData: (projectId: string, nodes: SystemNode[], edges: Edge[]) => {
-    const { projects, history, loadedProjects } = get();
+    const { projects, history, loadedProjects, isDirty } = get();
     set({
       loadedProjects: {
         ...loadedProjects,
@@ -187,15 +206,33 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       history: {
         ...history,
         [projectId]: { past: [], future: [] }
+      },
+      isDirty: {
+        ...isDirty,
+        [projectId]: false
+      }
+    });
+  },
+
+  setDirty: (projectId: string, activeIsDirty: boolean) => {
+    const { isDirty } = get();
+    set({
+      isDirty: {
+        ...isDirty,
+        [projectId]: activeIsDirty
       }
     });
   },
   
   onNodesChange: (changes: NodeChange<SystemNode>[]) => {
-    const { activeProjectId, projects } = get();
+    const { activeProjectId, projects, isDirty } = get();
     if (!activeProjectId) return;
     
     const currentNodes = projects[activeProjectId].nodes;
+    const hasPositionChange = changes.some(
+      (c) => c.type === 'position' || c.type === 'remove' || c.type === 'add'
+    );
+
     set({
       projects: {
         ...projects,
@@ -203,15 +240,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           ...projects[activeProjectId],
           nodes: applyNodeChanges(changes, currentNodes) as SystemNode[],
         }
-      }
+      },
+      isDirty: hasPositionChange ? {
+        ...isDirty,
+        [activeProjectId]: true
+      } : isDirty
     });
   },
   
   onEdgesChange: (changes: EdgeChange[]) => {
-    const { activeProjectId, projects } = get();
+    const { activeProjectId, projects, isDirty } = get();
     if (!activeProjectId) return;
     
     const currentEdges = projects[activeProjectId].edges;
+    const hasEdgeChange = changes.some(
+      (c) => c.type === 'remove' || c.type === 'add'
+    );
+
     set({
       projects: {
         ...projects,
@@ -219,7 +264,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           ...projects[activeProjectId],
           edges: applyEdgeChanges(changes, currentEdges),
         }
-      }
+      },
+      isDirty: hasEdgeChange ? {
+        ...isDirty,
+        [activeProjectId]: true
+      } : isDirty
     });
   },
   
@@ -230,7 +279,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     get().pushState();
     
     const currentEdges = projects[activeProjectId].edges;
-    // Set custom edge with default type 'custom', rendering smoothstep, and a unique ID
     const newEdge: Edge = {
       ...connection,
       id: uuidv4(),

@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CanvasSidebar } from "@/components/canvas/CanvasSidebar";
 import { NodeProperties } from "@/components/canvas/NodeProperties";
+import { SaveIndicator } from "@/components/canvas/SaveIndicator";
 
 export default function EditorLayout({
   children,
@@ -23,6 +24,8 @@ export default function EditorLayout({
           </Link>
           <div className="h-4 w-px bg-border"></div>
           <h1 className="font-semibold">System Design Simulator</h1>
+          <div className="h-4 w-px bg-border"></div>
+          <SaveIndicator />
         </div>
         <UserProfile />
       </header>

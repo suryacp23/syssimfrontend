@@ -5,7 +5,7 @@ import { useReactFlow, useOnSelectionChange, Node, Edge } from '@xyflow/react';
 import { useCanvasStore } from '@/store/canvasStore';
 import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, Maximize, Trash2, Save, Loader2, Keyboard, Undo2, Redo2 } from 'lucide-react';
-import { useSaveCanvas } from '@/hooks/useProjects';
+import { useSaveDiagram } from '@/hooks/useSaveDiagram';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -17,8 +17,8 @@ import {
 
 export function CanvasToolbar() {
   const { zoomIn, zoomOut, fitView, deleteElements } = useReactFlow();
-  const { activeProjectId, projects, undo, redo, history } = useCanvasStore();
-  const saveCanvasMutation = useSaveCanvas();
+  const { activeProjectId, projects, undo, redo, history, isDirty, setDirty } = useCanvasStore();
+  const saveDiagramMutation = useSaveDiagram();
   
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
   const [selectedEdges, setSelectedEdges] = useState<Edge[]>([]);
@@ -34,27 +34,30 @@ export function CanvasToolbar() {
     deleteElements({ nodes: selectedNodes, edges: selectedEdges });
   };
 
+  const dirty = activeProjectId ? isDirty[activeProjectId] : false;
+
   const handleSave = useCallback(() => {
     if (!activeProjectId) return;
-    if (saveCanvasMutation.isPending) return;
+    if (saveDiagramMutation.isPending) return;
     
     const projectData = projects[activeProjectId];
     if (!projectData) return;
 
-    saveCanvasMutation.mutate(
-      { id: activeProjectId, data: projectData },
+    saveDiagramMutation.mutate(
+      { projectId: activeProjectId, diagram: projectData },
       {
         onSuccess: () => {
-          toast.success("Canvas saved successfully");
+          setDirty(activeProjectId, false);
+          toast.success("Diagram saved successfully");
         },
         onError: () => {
-          toast.error("Failed to save canvas");
+          toast.error("Failed to save diagram");
         }
       }
     );
-  }, [activeProjectId, projects, saveCanvasMutation]);
+  }, [activeProjectId, projects, saveDiagramMutation, setDirty]);
 
-  // Handle keyboard shortcuts
+  // Handle keyboard shortcuts (Ctrl+S)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -66,6 +69,17 @@ export function CanvasToolbar() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
+
+  // Debounced auto-save: saves 15 seconds after the last edit when dirty
+  useEffect(() => {
+    if (!activeProjectId || !dirty || saveDiagramMutation.isPending) return;
+
+    const timer = setTimeout(() => {
+      handleSave();
+    }, 15000);
+
+    return () => clearTimeout(timer);
+  }, [dirty, activeProjectId, handleSave, saveDiagramMutation.isPending]);
 
   const shortcuts = [
     { label: "Save Canvas", keys: ["⌘/Ctrl", "S"] },
@@ -84,6 +98,13 @@ export function CanvasToolbar() {
   const projectHistory = activeProjectId ? history[activeProjectId] : null;
   const canUndo = projectHistory ? projectHistory.past.length > 0 : false;
   const canRedo = projectHistory ? projectHistory.future.length > 0 : false;
+
+  const getSaveButtonText = () => {
+    if (saveDiagramMutation.isPending) return "Saving...";
+    if (saveDiagramMutation.isError) return "Failed ❌";
+    if (saveDiagramMutation.isSuccess && !dirty) return "Saved ✓";
+    return "Save";
+  };
 
   return (
     <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-background border shadow-sm rounded-lg p-1.5 flex items-center gap-1">
@@ -124,17 +145,17 @@ export function CanvasToolbar() {
       <Button
         variant="ghost"
         size="sm"
-        className="gap-2"
-        disabled={saveCanvasMutation.isPending || !activeProjectId}
+        className="gap-2 transition-colors cursor-pointer"
+        disabled={saveDiagramMutation.isPending || !activeProjectId || !dirty}
         onClick={handleSave}
-        title="Save Canvas (Ctrl+S / Cmd+S)"
+        title="Save Diagram (Ctrl+S)"
       >
-        {saveCanvasMutation.isPending ? (
+        {saveDiagramMutation.isPending ? (
           <Loader2 className="w-4 h-4 animate-spin" />
         ) : (
           <Save className="w-4 h-4" />
         )}
-        <span>Save</span>
+        <span>{getSaveButtonText()}</span>
         <kbd className="ml-1 hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
           <span className="text-xs">⌘</span>S
         </kbd>
