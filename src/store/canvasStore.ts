@@ -11,8 +11,10 @@ import {
   OnConnect,
   applyNodeChanges,
   applyEdgeChanges,
+  reconnectEdge,
 } from '@xyflow/react';
 import { SystemNodeData } from '@/types/node';
+import { v4 as uuidv4 } from 'uuid';
 
 export type SystemNode = Node<SystemNodeData>;
 
@@ -26,6 +28,7 @@ interface CanvasState {
   activeProjectId: string | null;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  clipboard: { nodes: SystemNode[]; edges: Edge[] } | null;
   
   setActiveProject: (projectId: string) => void;
   setProjectData: (projectId: string, nodes: SystemNode[], edges: Edge[]) => void;
@@ -40,6 +43,16 @@ interface CanvasState {
   setSelectedNodeId: (nodeId: string | null) => void;
   setSelectedEdgeId: (edgeId: string | null) => void;
   
+  // Day 5 editing capabilities
+  duplicateNode: (nodeId?: string) => void;
+  copySelection: () => void;
+  pasteSelection: () => void;
+  updateEdge: (edgeId: string, updates: Partial<Edge>) => void;
+  reconnectEdge: (oldEdge: Edge, newConnection: Connection) => void;
+  selectAll: () => void;
+  bringToFront: (nodeId: string) => void;
+  sendToBack: (nodeId: string) => void;
+  
   history: Record<string, { past: ProjectCanvasData[], future: ProjectCanvasData[] }>;
   loadedProjects: Record<string, boolean>;
   undo: () => void;
@@ -52,6 +65,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   activeProjectId: null,
   selectedNodeId: null,
   selectedEdgeId: null,
+  clipboard: null,
 
   history: {},
   loadedProjects: {} as Record<string, boolean>,
@@ -216,7 +230,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     get().pushState();
     
     const currentEdges = projects[activeProjectId].edges;
-    const newEdge = { ...connection, type: 'custom' };
+    // Set custom edge with default type 'custom', rendering smoothstep, and a unique ID
+    const newEdge: Edge = {
+      ...connection,
+      id: uuidv4(),
+      type: 'custom',
+      data: { type: 'smoothstep' }
+    };
     
     set({
       projects: {
@@ -318,11 +338,273 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
     });
   },
+
   setSelectedNodeId: (nodeId) => {
     set({ selectedNodeId: nodeId });
   },
 
   setSelectedEdgeId: (edgeId) => {
     set({ selectedEdgeId: edgeId });
+  },
+
+  // Duplicate nodes
+  duplicateNode: (nodeId) => {
+    const { activeProjectId, projects } = get();
+    if (!activeProjectId) return;
+
+    const currentNodes = projects[activeProjectId].nodes;
+    const currentEdges = projects[activeProjectId].edges;
+
+    let nodesToDuplicate: SystemNode[] = [];
+    if (nodeId) {
+      const node = currentNodes.find((n) => n.id === nodeId);
+      if (node) nodesToDuplicate = [node];
+    } else {
+      nodesToDuplicate = currentNodes.filter((n) => n.selected);
+    }
+
+    if (nodesToDuplicate.length === 0) return;
+
+    get().pushState();
+
+    const idMap: Record<string, string> = {};
+    const newNodes = nodesToDuplicate.map((node) => {
+      const newId = uuidv4();
+      idMap[node.id] = newId;
+      return {
+        ...node,
+        id: newId,
+        selected: true,
+        position: {
+          x: node.position.x + 30,
+          y: node.position.y + 30,
+        },
+      };
+    });
+
+    const connectingEdges = currentEdges.filter(
+      (edge) => idMap[edge.source] && idMap[edge.target]
+    );
+
+    const newEdges = connectingEdges.map((edge) => ({
+      ...edge,
+      id: uuidv4(),
+      source: idMap[edge.source],
+      target: idMap[edge.target],
+      selected: false,
+    }));
+
+    const deselectedNodes = currentNodes.map((n) => ({ ...n, selected: false }));
+    const deselectedEdges = currentEdges.map((e) => ({ ...e, selected: false }));
+
+    set({
+      projects: {
+        ...projects,
+        [activeProjectId]: {
+          nodes: [...deselectedNodes, ...newNodes],
+          edges: [...deselectedEdges, ...newEdges],
+        },
+      },
+      selectedNodeId: newNodes.length === 1 ? newNodes[0].id : null,
+      selectedEdgeId: null,
+    });
+  },
+
+  // Copy selection to clipboard
+  copySelection: () => {
+    const { activeProjectId, projects } = get();
+    if (!activeProjectId) return;
+
+    const currentNodes = projects[activeProjectId].nodes;
+    const currentEdges = projects[activeProjectId].edges;
+
+    const selectedNodes = currentNodes.filter((n) => n.selected);
+    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
+
+    const selectedEdges = currentEdges.filter(
+      (edge) => selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
+    );
+
+    if (selectedNodes.length === 0) return;
+
+    set({
+      clipboard: {
+        nodes: JSON.parse(JSON.stringify(selectedNodes)),
+        edges: JSON.parse(JSON.stringify(selectedEdges)),
+      },
+    });
+  },
+
+  // Paste selection from clipboard
+  pasteSelection: () => {
+    const { activeProjectId, projects, clipboard } = get();
+    if (!activeProjectId || !clipboard || clipboard.nodes.length === 0) return;
+
+    get().pushState();
+
+    const currentNodes = projects[activeProjectId].nodes;
+    const currentEdges = projects[activeProjectId].edges;
+
+    const idMap: Record<string, string> = {};
+    const newNodes = clipboard.nodes.map((node) => {
+      const newId = uuidv4();
+      idMap[node.id] = newId;
+      return {
+        ...node,
+        id: newId,
+        selected: true,
+        position: {
+          x: node.position.x + 30,
+          y: node.position.y + 30,
+        },
+      };
+    });
+
+    const newEdges = clipboard.edges.map((edge) => ({
+      ...edge,
+      id: uuidv4(),
+      source: idMap[edge.source],
+      target: idMap[edge.target],
+      selected: false,
+    }));
+
+    const deselectedNodes = currentNodes.map((n) => ({ ...n, selected: false }));
+    const deselectedEdges = currentEdges.map((e) => ({ ...e, selected: false }));
+
+    set({
+      projects: {
+        ...projects,
+        [activeProjectId]: {
+          nodes: [...deselectedNodes, ...newNodes],
+          edges: [...deselectedEdges, ...newEdges],
+        },
+      },
+      clipboard: {
+        nodes: clipboard.nodes.map((n) => ({
+          ...n,
+          position: { x: n.position.x + 30, y: n.position.y + 30 },
+        })),
+        edges: clipboard.edges,
+      },
+      selectedNodeId: newNodes.length === 1 ? newNodes[0].id : null,
+      selectedEdgeId: null,
+    });
+  },
+
+  // Update edge style/labels
+  updateEdge: (edgeId, updates) => {
+    const { activeProjectId, projects } = get();
+    if (!activeProjectId) return;
+
+    get().pushState();
+
+    const currentEdges = projects[activeProjectId].edges;
+    set({
+      projects: {
+        ...projects,
+        [activeProjectId]: {
+          ...projects[activeProjectId],
+          edges: currentEdges.map((edge) => {
+            if (edge.id === edgeId) {
+              const baseData = edge.data || {};
+              const updateData = updates.data || {};
+              return {
+                ...edge,
+                ...updates,
+                data: {
+                  ...baseData,
+                  ...updateData,
+                },
+              };
+            }
+            return edge;
+          }),
+        },
+      },
+    });
+  },
+
+  // Reconnect edge endpoints
+  reconnectEdge: (oldEdge, newConnection) => {
+    const { activeProjectId, projects } = get();
+    if (!activeProjectId) return;
+
+    get().pushState();
+
+    const currentEdges = projects[activeProjectId].edges;
+    set({
+      projects: {
+        ...projects,
+        [activeProjectId]: {
+          ...projects[activeProjectId],
+          edges: reconnectEdge(oldEdge, newConnection, currentEdges),
+        },
+      },
+    });
+  },
+
+  // Select all nodes and edges
+  selectAll: () => {
+    const { activeProjectId, projects } = get();
+    if (!activeProjectId) return;
+
+    const currentNodes = projects[activeProjectId].nodes;
+    const currentEdges = projects[activeProjectId].edges;
+
+    set({
+      projects: {
+        ...projects,
+        [activeProjectId]: {
+          nodes: currentNodes.map((node) => ({ ...node, selected: true })),
+          edges: currentEdges.map((edge) => ({ ...edge, selected: true })),
+        },
+      },
+    });
+  },
+
+  // Bring node to front (zIndex)
+  bringToFront: (nodeId) => {
+    const { activeProjectId, projects } = get();
+    if (!activeProjectId) return;
+
+    get().pushState();
+
+    const currentNodes = projects[activeProjectId].nodes;
+    const maxZ = currentNodes.reduce((max, n) => Math.max(max, n.zIndex || 0), 0);
+
+    set({
+      projects: {
+        ...projects,
+        [activeProjectId]: {
+          ...projects[activeProjectId],
+          nodes: currentNodes.map((node) =>
+            node.id === nodeId ? { ...node, zIndex: maxZ + 1 } : node
+          ),
+        },
+      },
+    });
+  },
+
+  // Send node to back (zIndex)
+  sendToBack: (nodeId) => {
+    const { activeProjectId, projects } = get();
+    if (!activeProjectId) return;
+
+    get().pushState();
+
+    const currentNodes = projects[activeProjectId].nodes;
+    const minZ = currentNodes.reduce((min, n) => Math.min(min, n.zIndex || 0), 0);
+
+    set({
+      projects: {
+        ...projects,
+        [activeProjectId]: {
+          ...projects[activeProjectId],
+          nodes: currentNodes.map((node) =>
+            node.id === nodeId ? { ...node, zIndex: Math.min(0, minZ - 1) } : node
+          ),
+        },
+      },
+    });
   },
 }));

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -8,16 +8,21 @@ import {
   Background,
   useReactFlow,
   NodeMouseHandler,
+  Connection,
+  Edge,
+  HandleType,
 } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 
 import '@xyflow/react/dist/style.css';
 
-import { useCanvasStore } from '@/store/canvasStore';
+import { useCanvasStore, SystemNode } from '@/store/canvasStore';
 import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { CanvasToolbar } from './CanvasToolbar';
 import { SystemNodeType, SystemNodeData } from '@/types/node';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { ContextMenu } from './ContextMenu';
 
 const nodeTypes = {
   custom: CustomNode,
@@ -41,10 +46,28 @@ export function Canvas() {
     setSelectedNodeId,
     setSelectedEdgeId,
     removeNode,
+    reconnectEdge,
+    duplicateNode,
+    copySelection,
+    bringToFront,
+    sendToBack,
   } = useCanvasStore();
 
   const nodes = activeProjectId ? projects[activeProjectId]?.nodes || [] : [];
   const edges = activeProjectId ? projects[activeProjectId]?.edges || [] : [];
+
+  // Register Keyboard Shortcuts
+  useKeyboardShortcuts();
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    node: SystemNode;
+  } | null>(null);
+
+  // Edge Reconnection State
+  const edgeReconnectSuccessful = useRef(true);
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -83,14 +106,16 @@ export function Canvas() {
     (_, node) => {
       setSelectedNodeId(node.id);
       setSelectedEdgeId(null);
+      setContextMenu(null);
     },
     [setSelectedNodeId, setSelectedEdgeId]
   );
 
   const onEdgeClick = useCallback(
-    (_, edge) => {
+    (event: React.MouseEvent, edge: Edge) => {
       setSelectedEdgeId(edge.id);
       setSelectedNodeId(null);
+      setContextMenu(null);
     },
     [setSelectedEdgeId, setSelectedNodeId]
   );
@@ -98,16 +123,121 @@ export function Canvas() {
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
+    setContextMenu(null);
   }, [setSelectedNodeId, setSelectedEdgeId]);
 
   const onNodeDragStart = useCallback(() => {
     useCanvasStore.getState().pushState();
   }, []);
 
-  // React Flow handles Backspace and Delete internally for selected nodes and edges.
+  // Context Menu Handlers
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: any) => {
+      event.preventDefault();
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        node: node as SystemNode,
+      });
+    },
+    []
+  );
+
+  const onRenameNode = useCallback(
+    (node: SystemNode) => {
+      setSelectedNodeId(node.id);
+      setSelectedEdgeId(null);
+      // Let React state update and then focus the input
+      setTimeout(() => {
+        const input = document.getElementById('node-label');
+        if (input) {
+          input.focus();
+          (input as HTMLInputElement).select();
+        }
+      }, 50);
+    },
+    [setSelectedNodeId, setSelectedEdgeId]
+  );
+
+  const onCopyNode = useCallback(
+    (node: SystemNode) => {
+      const previousNodes = [...nodes];
+      const previousEdges = [...edges];
+
+      // Select ONLY the targeted node in store temporarily to copy it
+      useCanvasStore.setState((state) => {
+        const proj = state.projects[activeProjectId!];
+        if (!proj) return {};
+        return {
+          projects: {
+            ...state.projects,
+            [activeProjectId!]: {
+              nodes: proj.nodes.map((n) => ({ ...n, selected: n.id === node.id })),
+              edges: proj.edges.map((e) => ({ ...e, selected: false })),
+            },
+          },
+        };
+      });
+
+      copySelection();
+
+      // Restore previous selections
+      useCanvasStore.setState({
+        projects: {
+          ...useCanvasStore.getState().projects,
+          [activeProjectId!]: { nodes: previousNodes, edges: previousEdges },
+        },
+      });
+    },
+    [nodes, edges, activeProjectId, copySelection]
+  );
+
+  // Edge Reconnection Handlers
+  const onReconnectStart = useCallback(() => {
+    edgeReconnectSuccessful.current = false;
+  }, []);
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      edgeReconnectSuccessful.current = true;
+      reconnectEdge(oldEdge, newConnection);
+    },
+    [reconnectEdge]
+  );
+
+  const onReconnectEnd = useCallback(
+    (_: MouseEvent | TouchEvent, edge: Edge) => {
+      if (!edgeReconnectSuccessful.current) {
+        useCanvasStore.getState().removeEdge(edge.id);
+      }
+      edgeReconnectSuccessful.current = true;
+    },
+    []
+  );
+
+  // Connection Validation (Prevent self-loops and duplicate edges)
+  const isValidConnection = useCallback(
+    (connection: any) => {
+      // Prevent connecting to self
+      if (connection.source === connection.target) return false;
+
+      // Prevent duplicate connections (same handles)
+      const exists = edges.some(
+        (edge) =>
+          edge.source === connection.source &&
+          edge.sourceHandle === connection.sourceHandle &&
+          edge.target === connection.target &&
+          edge.targetHandle === connection.targetHandle
+      );
+      if (exists) return false;
+
+      return true;
+    },
+    [edges]
+  );
 
   return (
-    <div className="w-full h-full relative" ref={reactFlowWrapper}>
+    <div className="w-full h-full relative animate-fade-in" ref={reactFlowWrapper}>
       <CanvasToolbar />
       
       <ReactFlow
@@ -122,6 +252,11 @@ export function Canvas() {
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         onNodeDragStart={onNodeDragStart}
+        onNodeContextMenu={onNodeContextMenu}
+        onReconnect={onReconnect}
+        onReconnectStart={onReconnectStart}
+        onReconnectEnd={onReconnectEnd}
+        isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
@@ -140,11 +275,26 @@ export function Canvas() {
         
         {nodes.length === 0 && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none select-none flex flex-col items-center">
-            <div className="text-4xl mb-4">✨</div>
+            <div className="text-4xl mb-4 animate-bounce">✨</div>
             <p className="text-lg font-medium">Drop components here</p>
           </div>
         )}
       </ReactFlow>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          node={contextMenu.node}
+          onClose={() => setContextMenu(null)}
+          onRename={onRenameNode}
+          onDuplicate={(node) => duplicateNode(node.id)}
+          onDelete={(node) => removeNode(node.id)}
+          onCopy={onCopyNode}
+          onBringForward={(node) => bringToFront(node.id)}
+          onSendBack={(node) => sendToBack(node.id)}
+        />
+      )}
     </div>
   );
 }

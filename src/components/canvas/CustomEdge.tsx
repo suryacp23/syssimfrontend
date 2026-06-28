@@ -1,7 +1,12 @@
-"use client";
-
 import React from 'react';
-import { BaseEdge, EdgeLabelRenderer, EdgeProps, getBezierPath } from '@xyflow/react';
+import { 
+  BaseEdge, 
+  EdgeLabelRenderer, 
+  EdgeProps, 
+  getBezierPath, 
+  getSmoothStepPath, 
+  getStraightPath 
+} from '@xyflow/react';
 import { useCanvasStore } from '@/store/canvasStore';
 import { Trash2, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,19 +24,46 @@ export function CustomEdge({
   style = {},
   markerEnd,
   selected,
+  label,
+  data,
 }: EdgeProps) {
   const { removeEdge, setSelectedEdgeId, activeProjectId, projects } = useCanvasStore();
 
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  const pathType = data?.type || 'smoothstep';
 
-  const onEdgeClick = () => {
+  let pathResult;
+  if (pathType === 'bezier') {
+    pathResult = getBezierPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+    });
+  } else if (pathType === 'straight') {
+    pathResult = getStraightPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+    });
+  } else {
+    pathResult = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      borderRadius: 10,
+    });
+  }
+
+  const [edgePath, labelX, labelY] = pathResult;
+
+  const onEdgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     setSelectedEdgeId(id);
   };
 
@@ -45,43 +77,77 @@ export function CustomEdge({
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);
 
+  const displayLabel = label || (data?.label as string);
+
   return (
     <>
       <BaseEdge 
         path={edgePath} 
         markerEnd={markerEnd} 
         style={style} 
-        className={cn(selected ? "stroke-primary stroke-[3px]" : "stroke-border hover:stroke-primary/50")}
+        className={cn(
+          "transition-all duration-150",
+          selected 
+            ? "stroke-blue-500 stroke-[3px] filter drop-shadow-[0_0_4px_rgba(59,130,246,0.4)]" 
+            : "stroke-zinc-400 stroke-[2px] hover:stroke-blue-500/50 dark:stroke-zinc-700 dark:hover:stroke-blue-500/50"
+        )}
       />
       <EdgeLabelRenderer>
-        <div
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            pointerEvents: 'all',
-          }}
-          className={cn(
-            "nodrag nopan transition-all duration-200 flex flex-col items-center gap-1.5",
-            selected ? "opacity-100 z-50 scale-100" : "opacity-0 scale-95 pointer-events-none"
-          )}
-          onClick={onEdgeClick}
-        >
-          <div className="flex items-center gap-2 bg-background/95 backdrop-blur-sm border shadow-sm px-2.5 py-1 rounded-md text-xs font-medium text-foreground whitespace-nowrap">
-            <span className="truncate max-w-[100px]">{sourceNode?.data.label || 'Unknown'}</span>
-            <ArrowRight className="w-3 h-3 text-muted-foreground" />
-            <span className="truncate max-w-[100px]">{targetNode?.data.label || 'Unknown'}</span>
-          </div>
-          
-          <button
-            className="flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-destructive text-destructive-foreground shadow-sm hover:scale-105 transition-transform text-xs font-medium"
-            onClick={handleDelete}
-            onPointerDown={handleDelete}
-            title="Delete Edge"
+        {/* Render persistent label when not selected */}
+        {!selected && displayLabel && (
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: 'all',
+            }}
+            onClick={onEdgeClick}
+            className="nodrag nopan bg-zinc-950/90 dark:bg-zinc-900/95 border border-zinc-800 shadow-sm px-2 py-0.5 rounded-full text-[10px] font-semibold text-zinc-300 whitespace-nowrap cursor-pointer hover:border-zinc-650 hover:text-white transition-colors"
           >
-            <Trash2 className="w-3 h-3" />
-            Delete
-          </button>
-        </div>
+            {displayLabel}
+          </div>
+        )}
+
+        {/* Render selection overlay (connections + delete button) when selected */}
+        {selected && (
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: 'all',
+            }}
+            className="nodrag nopan flex flex-col items-center gap-1.5 z-50 animate-in fade-in scale-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center bg-zinc-950/95 border border-zinc-800 shadow-xl p-2.5 rounded-xl text-xs text-zinc-300 gap-1.5 min-w-[140px]">
+              <div className="flex items-center gap-1.5 font-medium border-b border-zinc-900 pb-1 w-full justify-center px-1">
+                <span className="truncate max-w-[70px]" title={sourceNode?.data.label}>
+                  {sourceNode?.data.label || 'Node'}
+                </span>
+                <ArrowRight className="w-3 h-3 text-zinc-500" />
+                <span className="truncate max-w-[70px]" title={targetNode?.data.label}>
+                  {targetNode?.data.label || 'Node'}
+                </span>
+              </div>
+              
+              {displayLabel && (
+                <span className="px-2 py-0.5 bg-zinc-900 border border-zinc-850 rounded-md text-[10px] font-mono text-zinc-400">
+                  {displayLabel}
+                </span>
+              )}
+
+              <button
+                className="flex items-center justify-center gap-1 w-full py-1.5 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground transition-colors text-[11px] font-medium cursor-pointer shadow-sm"
+                onClick={handleDelete}
+                onPointerDown={handleDelete}
+                title="Delete Edge"
+              >
+                <Trash2 className="w-3 h-3" />
+                Delete Edge
+              </button>
+            </div>
+          </div>
+        )}
       </EdgeLabelRenderer>
     </>
   );

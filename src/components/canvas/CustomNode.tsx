@@ -25,7 +25,9 @@ export function CustomNode({ data, selected }: { data: SystemNodeData; selected:
     <div
       className={cn(
         "relative flex items-center justify-center bg-card border-2 rounded-xl shadow-sm transition-all overflow-hidden",
-        selected ? "border-primary ring-2 ring-primary/20 shadow-md" : "border-border hover:border-primary/50"
+        selected 
+          ? "border-blue-500 ring-2 ring-blue-500/20 shadow-[0_0_12px_rgba(59,130,246,0.3)] scale-[1.02]" 
+          : "border-border hover:border-zinc-400 dark:hover:border-zinc-650"
       )}
       style={{ width, height }}
     >

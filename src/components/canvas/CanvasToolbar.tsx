@@ -57,38 +57,28 @@ export function CanvasToolbar() {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key === 's') {
-          e.preventDefault();
-          handleSave();
-        } else if (e.key === 'z') {
-          if (e.shiftKey) {
-            e.preventDefault();
-            redo();
-          } else {
-            e.preventDefault();
-            undo();
-          }
-        } else if (e.key === 'y') {
-          e.preventDefault();
-          redo();
-        }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave, undo, redo]);
+  }, [handleSave]);
 
   const shortcuts = [
     { label: "Save Canvas", keys: ["⌘/Ctrl", "S"] },
     { label: "Undo", keys: ["⌘/Ctrl", "Z"] },
-    { label: "Redo", keys: ["⌘/Ctrl", "Shift", "Z"] },
+    { label: "Redo", keys: ["⌘/Ctrl", "Y", "or", "Shift", "Z"] },
+    { label: "Duplicate Selection", keys: ["⌘/Ctrl", "D"] },
+    { label: "Copy Selection", keys: ["⌘/Ctrl", "C"] },
+    { label: "Paste Selection", keys: ["⌘/Ctrl", "V"] },
+    { label: "Select All Nodes", keys: ["⌘/Ctrl", "A"] },
     { label: "Delete Selected", keys: ["Del", "Backspace"] },
-    { label: "Zoom In", keys: ["Scroll Up"] },
-    { label: "Zoom Out", keys: ["Scroll Down"] },
+    { label: "Zoom In/Out", keys: ["Scroll Up/Down"] },
     { label: "Pan Canvas", keys: ["Space + Drag"] },
-    { label: "Multi-Select", keys: ["Shift + Drag"] },
+    { label: "Selection Box", keys: ["Shift + Drag"] },
   ];
 
   const projectHistory = activeProjectId ? history[activeProjectId] : null;
