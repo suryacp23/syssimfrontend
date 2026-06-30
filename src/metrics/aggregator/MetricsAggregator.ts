@@ -11,7 +11,10 @@ export type MetricEvent =
   | { type: 'NodeVisited'; nodeId: string; nodeName: string; nodeType: string; latency: number; timestamp: number }
   | { type: 'CacheHit'; nodeId: string; nodeName: string; nodeType: string; timestamp: number }
   | { type: 'CacheMiss'; nodeId: string; nodeName: string; nodeType: string; timestamp: number }
-  | { type: 'QueueDropped'; nodeId: string; nodeName: string; timestamp: number };
+  | { type: 'QueueDropped'; nodeId: string; nodeName: string; timestamp: number }
+  | { type: 'RequestTimeout'; requestId: string; timestamp: number }
+  | { type: 'RequestRetried'; requestId: string; timestamp: number }
+  | { type: 'CircuitOpened'; nodeId: string; nodeName: string; timestamp: number };
 
 class MetricsAggregatorClass {
   private latencyCalculator = new LatencyCalculator();
@@ -25,6 +28,10 @@ class MetricsAggregatorClass {
   private completedRequests = 0;
   private failedRequests = 0;
   private allLatencies: number[] = [];
+  
+  private retryCount = 0;
+  private timeoutCount = 0;
+  private circuitBreakerTrips = 0;
 
   // Alerts collection
   private alerts: MetricAlert[] = [];
@@ -55,6 +62,9 @@ class MetricsAggregatorClass {
     this.completedRequests = 0;
     this.failedRequests = 0;
     this.allLatencies = [];
+    this.retryCount = 0;
+    this.timeoutCount = 0;
+    this.circuitBreakerTrips = 0;
     this.alerts = [];
     this.triggeredAlertKeys.clear();
     this.seriesAccumulator = {};
@@ -126,6 +136,20 @@ class MetricsAggregatorClass {
       case 'QueueDropped':
         this.nodeTracker.registerDrop(event.nodeId, event.nodeName);
         this.triggerAlert('error', `Queue capacity exceeded! Request dropped at ${event.nodeName}`, `queue-drop-${event.nodeId}-${second}`, second);
+        break;
+
+      case 'RequestTimeout':
+        this.timeoutCount += 1;
+        this.triggerAlert('warning', `Request Timeout occurred`, `timeout-${event.requestId}`, second);
+        break;
+        
+      case 'RequestRetried':
+        this.retryCount += 1;
+        break;
+
+      case 'CircuitOpened':
+        this.circuitBreakerTrips += 1;
+        this.triggerAlert('error', `Circuit Breaker OPEN for ${event.nodeName}!`, `circuit-${event.nodeId}-${second}`, second);
         break;
     }
 
@@ -208,6 +232,9 @@ class MetricsAggregatorClass {
       cacheHits: cacheStats.hits,
       cacheMisses: cacheStats.misses,
       cacheHitRatio: cacheStats.hitRatio,
+      retryCount: this.retryCount,
+      timeoutCount: this.timeoutCount,
+      circuitBreakerTrips: this.circuitBreakerTrips,
     };
 
     // 5. Construct sliding window history of 60 seconds

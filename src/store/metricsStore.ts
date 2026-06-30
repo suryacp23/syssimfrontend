@@ -41,6 +41,9 @@ export interface AggregateMetrics {
   cacheHits: number;
   cacheMisses: number;
   cacheHitRatio: number;
+  retryCount: number;
+  timeoutCount: number;
+  circuitBreakerTrips: number;
 }
 
 export interface SimulationRun {
@@ -98,6 +101,9 @@ const initialMetrics: AggregateMetrics = {
   cacheHits: 0,
   cacheMisses: 0,
   cacheHitRatio: 0,
+  retryCount: 0,
+  timeoutCount: 0,
+  circuitBreakerTrips: 0,
 };
 
 export const useMetricsStore = create<MetricsState>((set, get) => ({

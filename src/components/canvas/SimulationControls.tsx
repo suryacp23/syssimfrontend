@@ -4,9 +4,10 @@ import React from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
 import { useCanvasStore } from '@/store/canvasStore';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, RotateCcw, AlertTriangle, Activity } from 'lucide-react';
+import { Play, Pause, RotateCcw, AlertTriangle, Activity, Zap } from 'lucide-react';
 import { simulatorInstance } from '@/simulation/engine/Simulator';
 import { useMetricsStore } from '@/store/metricsStore';
+import { FailurePanel } from '../failure/FailurePanel';
 
 export function SimulationControls() {
   const { 
@@ -21,6 +22,27 @@ export function SimulationControls() {
     resetSimulation,
     setSpeed 
   } = useSimulationStore();
+
+  const [showFailurePanel, setShowFailurePanel] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        showFailurePanel &&
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setShowFailurePanel(false);
+      }
+    };
+
+    // Use capture phase to catch the event before React Flow swallows it
+    document.addEventListener('mousedown', handleClickOutside, { capture: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, { capture: true });
+    };
+  }, [showFailurePanel]);
 
   const { activeProjectId, projects } = useCanvasStore();
   const nodes = activeProjectId ? projects[activeProjectId]?.nodes || [] : [];
@@ -46,7 +68,7 @@ export function SimulationControls() {
   };
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+    <div ref={containerRef} className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
       {/* Validation Errors Alert */}
       {validationErrors.length > 0 && (
         <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-destructive/15 border border-destructive/20 text-destructive text-xs max-w-sm shadow-lg backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
@@ -91,14 +113,28 @@ export function SimulationControls() {
             </Button>
           </>
         ) : !isRunning ? (
-          <Button 
-            onClick={handleRun}
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>Run Simulation</span>
-          </Button>
+          <>
+            <Button 
+              onClick={handleRun}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Run Simulation</span>
+            </Button>
+            
+            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
+            
+            <Button
+              onClick={() => setShowFailurePanel(!showFailurePanel)}
+              variant="outline"
+              size="sm"
+              className={`gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold transition-colors ${showFailurePanel ? 'bg-rose-500/10' : 'bg-rose-500/5 hover:bg-rose-500/10'}`}
+            >
+              <Zap className="w-3.5 h-3.5 text-rose-500" />
+              <span>Chaos</span>
+            </Button>
+          </>
         ) : (
           <>
             <Button
@@ -141,6 +177,18 @@ export function SimulationControls() {
               <Activity className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
               <span>Observability</span>
             </Button>
+
+            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
+
+            <Button
+              onClick={() => setShowFailurePanel(!showFailurePanel)}
+              variant="outline"
+              size="sm"
+              className={`gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold transition-colors ${showFailurePanel ? 'bg-rose-500/10' : 'bg-rose-500/5 hover:bg-rose-500/10'}`}
+            >
+              <Zap className="w-3.5 h-3.5 text-rose-500" />
+              <span>Chaos</span>
+            </Button>
           </>
         )}
 
@@ -167,6 +215,12 @@ export function SimulationControls() {
           </>
         )}
       </div>
+
+      {showFailurePanel && !isCompleted && (
+        <div className="absolute bottom-[calc(100%+12px)] right-0 animate-in slide-in-from-bottom-2 duration-200">
+          <FailurePanel />
+        </div>
+      )}
     </div>
   );
 }

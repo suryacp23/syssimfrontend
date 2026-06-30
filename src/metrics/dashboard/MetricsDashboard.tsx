@@ -15,7 +15,7 @@ import { useParams } from 'next/navigation';
 import { useProject } from '@/hooks/useProjects';
 import { 
   X, Download, Activity, AlertTriangle, TrendingUp, BarChart3, Database, Timer, 
-  CheckSquare, History, Play, Pause, RotateCcw, Columns
+  CheckSquare, History, Play, Pause, RotateCcw, Columns, RefreshCw, Clock, ShieldAlert
 } from 'lucide-react';
 import { simulatorInstance } from '@/simulation/engine/Simulator';
 
@@ -237,7 +237,7 @@ export function MetricsDashboard() {
       <main className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col min-h-0 bg-background/50">
         
         {/* KPI Cards Row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 shrink-0">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 gap-4 shrink-0">
           <MetricsCard
             title="Total / Active Requests"
             value={`${metrics.totalRequests} / ${metrics.activeRequests}`}
@@ -285,6 +285,30 @@ export function MetricsDashboard() {
             description={`${metrics.cacheHits} Hits, ${metrics.cacheMisses} Misses`}
             icon={<Database className="w-4 h-4" />}
             glowColor={metrics.cacheHitRatio >= 75 ? 'green' : metrics.cacheHitRatio >= 40 ? 'amber' : 'red'}
+          />
+          <MetricsCard
+            title="Request Retries"
+            value={metrics.retryCount}
+            unit="count"
+            description="Requests retried due to failures"
+            icon={<RefreshCw className="w-4 h-4" />}
+            glowColor={metrics.retryCount === 0 ? 'green' : 'amber'}
+          />
+          <MetricsCard
+            title="Timeouts"
+            value={metrics.timeoutCount}
+            unit="count"
+            description="Exceeded maximum wait time"
+            icon={<Clock className="w-4 h-4" />}
+            glowColor={metrics.timeoutCount === 0 ? 'green' : 'red'}
+          />
+          <MetricsCard
+            title="Circuit Breakers"
+            value={metrics.circuitBreakerTrips}
+            unit="trips"
+            description="Fast fail mechanism activations"
+            icon={<ShieldAlert className="w-4 h-4" />}
+            glowColor={metrics.circuitBreakerTrips === 0 ? 'green' : 'red'}
           />
         </div>
 

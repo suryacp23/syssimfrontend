@@ -4,7 +4,12 @@ import { SimRequest } from '../types/Request';
 import { SimEvent } from '../types/Event';
 import { SystemNode } from '@/store/canvasStore';
 import { Edge } from '@xyflow/react';
-import { MetricsAggregator } from '@/metrics/aggregator/MetricsAggregator';
+import { MetricsAggregator, MetricEvent } from '@/metrics/aggregator/MetricsAggregator';
+import { useFailureStore } from '@/store/failureStore';
+import { failureEngineInstance } from '../failure/FailureEngine';
+import { TimeoutHandler } from '../failure/TimeoutHandler';
+import { circuitBreakerInstance } from '../failure/CircuitBreaker';
+import { retryPolicyInstance } from '../failure/RetryPolicy';
 
 // Default latency values per component type
 const DEFAULT_LATENCY: Record<string, number> = {
@@ -36,8 +41,10 @@ export class SimulationEngine {
     this.requestCallStack = {};
     this.requestCacheFlags = {};
 
-    // Initialize Metrics Aggregator
+    // Initialize Metrics Aggregator & Failure Engine
     MetricsAggregator.init();
+    failureEngineInstance.reset();
+    failureEngineInstance.updateNodeHealth(this.graph);
 
     const clientNode = nodes.find(n => n.data?.type === 'client');
     if (!clientNode) return;
@@ -88,6 +95,9 @@ export class SimulationEngine {
     // Increment virtual clock
     const virtualDelta = realDeltaTimeMs * speedMultiplier;
     this.virtualTime += virtualDelta;
+    
+    // Update node health dynamic status
+    failureEngineInstance.updateNodeHealth(this.graph);
 
     // Process all events scheduled up to this virtual time
     while (this.eventQueue.length > 0 && this.eventQueue[0].time <= this.virtualTime) {
@@ -147,12 +157,30 @@ export class SimulationEngine {
 
       case 'NODE_ARRIVE': {
         const nodeId = event.nodeId!;
+        const nodeStatus = failureEngineInstance.getNodeStatus(nodeId, this.virtualTime);
+
+        if (nodeStatus === 'unavailable') {
+          const tripped = circuitBreakerInstance.recordFailure(nodeId, this.virtualTime);
+          if (tripped) {
+            MetricsAggregator.addEvent({
+              type: 'CircuitOpened',
+              nodeId,
+              nodeName: this.graph[nodeId]?.node?.data?.label || nodeId,
+              timestamp: this.virtualTime,
+            } as unknown as MetricEvent);
+          }
+          this.handleRequestFailure(req, event, `Node ${nodeId} is unavailable!`);
+          break;
+        }
+
+        circuitBreakerInstance.recordSuccess(nodeId);
+
         req.currentNodeId = nodeId;
         req.path.push(nodeId);
 
         const node = this.graph[nodeId]?.node;
         const type = node?.data?.type || 'api';
-        const latency = DEFAULT_LATENCY[type] || 10;
+        const latency = (DEFAULT_LATENCY[type] || 10) + failureEngineInstance.getAddedLatency();
 
         // Implement Queue Dropping
         if (type === 'queue') {
@@ -204,6 +232,16 @@ export class SimulationEngine {
         const latency = event.data?.latency || 0;
         req.latency += latency;
 
+        if (TimeoutHandler.isTimeout(req.latency)) {
+           MetricsAggregator.addEvent({
+             type: 'RequestTimeout',
+             requestId: req.id,
+             timestamp: this.virtualTime,
+           } as unknown as MetricEvent);
+           this.handleRequestFailure(req, event, `Request timed out (Latency ${req.latency}ms)`);
+           break;
+        }
+
         const node = this.graph[nodeId]?.node;
         req.log.push(`Processed by ${node?.data?.label || 'Node'} (+${latency}ms).`);
         store.updateRequest(req.id, {
@@ -245,6 +283,11 @@ export class SimulationEngine {
         // Remove animation from edge
         store.removeAnimatingEdge(edgeId, event.id);
 
+        if (failureEngineInstance.checkPacketLoss()) {
+          this.handleRequestFailure(req, event, `Packet lost in transit to ${targetNodeId}`);
+          break;
+        }
+
         // Arrive at target node
         this.scheduleEvent({
           id: `evt-arrive-${req.id}-${targetNodeId}`,
@@ -284,8 +327,20 @@ export class SimulationEngine {
 
     // 1. Load Balancer Round Robin Outgoing Allocation
     if (type === 'loadBalancer') {
-      const rrIndex = this.lbIndexMap[nodeId] || 0;
-      const targetEdge = outgoing[rrIndex % outgoing.length];
+      let rrIndex = this.lbIndexMap[nodeId] || 0;
+      const initialIndex = rrIndex;
+      let targetEdge = outgoing[rrIndex % outgoing.length];
+      
+      // Failover logic
+      while (failureEngineInstance.getNodeStatus(targetEdge.targetId, this.virtualTime) === 'unavailable') {
+        rrIndex++;
+        if ((rrIndex % outgoing.length) === (initialIndex % outgoing.length)) {
+          // All downstream nodes unavailable
+          break;
+        }
+        targetEdge = outgoing[rrIndex % outgoing.length];
+      }
+      
       this.lbIndexMap[nodeId] = (rrIndex + 1) % outgoing.length;
 
       req.log.push(`Load balanced (Round Robin index ${rrIndex}) to API.`);
@@ -410,6 +465,41 @@ export class SimulationEngine {
         requestId: req.id,
         timestamp: this.virtualTime,
       });
+    }
+  }
+
+  // Handle request failure (retry or complete with failure)
+  private handleRequestFailure(req: SimRequest, currentEvent: SimEvent, message: string) {
+    const config = useFailureStore.getState().config;
+    
+    if (retryPolicyInstance.getRetryCount(req.id) < config.retryCount) {
+      req.log.push(`Failure: ${message}`);
+      const attempt = retryPolicyInstance.incrementRetry(req.id);
+      const backoff = retryPolicyInstance.getBackoffMs(attempt);
+      req.log.push(`Retrying request (Attempt ${attempt}/${config.retryCount}) after ${backoff}ms...`);
+      
+      MetricsAggregator.addEvent({
+        type: 'RequestRetried',
+        requestId: req.id,
+        timestamp: this.virtualTime,
+      } as unknown as MetricEvent);
+
+      // Reset request properties for retry
+      req.path = [];
+      req.latency = 0;
+      req.currentNodeId = null;
+
+      const clientNodeId = req.path[0] || currentEvent.nodeId; // fallback
+      
+      this.scheduleEvent({
+        id: `evt-retry-${req.id}-${this.virtualTime}`,
+        time: this.virtualTime + backoff,
+        type: 'REQUEST_START',
+        requestId: req.id,
+        nodeId: clientNodeId, 
+      });
+    } else {
+      this.completeRequest(req, 'failed', `Permanent failure: ${message}`);
     }
   }
 }

@@ -2,15 +2,17 @@
 
 import { Handle, Position } from '@xyflow/react';
 import { SystemNodeData } from '@/types/node';
-import { MonitorSmartphone, Server, Database, Container, Box, Network } from 'lucide-react';
+import { MonitorSmartphone, Server, Database, Container, Box, Network, AlertCircle, AlertOctagon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSimulationStore } from '@/store/simulationStore';
+import { useFailureStore } from '@/store/failureStore';
 
 export function CustomNode({ id, data, selected }: { id: string; data: SystemNodeData; selected: boolean }) {
   const activeCount = useSimulationStore(state => state.activeNodes[id] || 0);
   const isActive = activeCount > 0;
   const processedCount = useSimulationStore(state => state.processedNodes[id] || 0);
   const isSimulationActive = useSimulationStore(state => state.isRunning);
+  const healthStatus = useFailureStore(state => state.healthStatus[id] || 'healthy');
 
   const getIcon = () => {
     switch (data.type) {
@@ -32,6 +34,13 @@ export function CustomNode({ id, data, selected }: { id: string; data: SystemNod
       return selected 
         ? "border-blue-500 ring-2 ring-blue-500/20 shadow-[0_0_12px_rgba(59,130,246,0.3)] scale-[1.02]" 
         : "border-border hover:border-zinc-400 dark:hover:border-zinc-650";
+    }
+
+    if (healthStatus === 'unavailable') {
+      return "border-red-600 bg-red-50/20 dark:bg-red-950/20 grayscale opacity-80 shadow-[0_0_15px_rgba(220,38,38,0.5)]";
+    }
+    if (healthStatus === 'degraded') {
+      return "border-orange-500 bg-orange-50/10 dark:bg-orange-950/10 shadow-[0_0_15px_rgba(249,115,22,0.4)] animate-pulse";
     }
 
     if (activeCount <= 1) {
@@ -71,6 +80,15 @@ export function CustomNode({ id, data, selected }: { id: string; data: SystemNod
     return 'bg-rose-500';
   };
 
+  const getHealthIndicator = () => {
+    switch (healthStatus) {
+      case 'slow': return <Clock className="w-3.5 h-3.5 text-yellow-500 absolute -top-1.5 -left-1.5 drop-shadow-md bg-white dark:bg-black rounded-full" />;
+      case 'degraded': return <AlertCircle className="w-3.5 h-3.5 text-orange-500 absolute -top-1.5 -left-1.5 drop-shadow-md animate-pulse bg-white dark:bg-black rounded-full" />;
+      case 'unavailable': return <AlertOctagon className="w-4 h-4 text-red-600 absolute -top-2 -left-2 drop-shadow-md animate-bounce bg-white dark:bg-black rounded-full" />;
+      default: return null;
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -79,6 +97,7 @@ export function CustomNode({ id, data, selected }: { id: string; data: SystemNod
       )}
       style={{ width, height }}
     >
+      {getHealthIndicator()}
       <Handle type="target" position={Position.Top} id="top" className="w-2 h-2 !bg-primary/50 !border-background" />
       <Handle type="target" position={Position.Left} id="left" className="w-2 h-2 !bg-primary/50 !border-background" />
       
