@@ -4,11 +4,12 @@ import React from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
 import { useCanvasStore } from '@/store/canvasStore';
 import { useMetricsStore } from '@/store/metricsStore';
-import { CheckCircle2, XCircle, Clock, ChevronRight, Activity } from 'lucide-react';
+import { useScalingStore } from '@/store/scalingStore';
+import { CheckCircle2, XCircle, Clock, ChevronRight, Activity, DollarSign, AlertTriangle, Zap } from 'lucide-react';
 
 export function SimulationDashboard() {
   const { isRunning, isCompleted, requests, selectedRequestId, setSelectedRequestId } = useSimulationStore();
-  const metrics = useMetricsStore(state => state.metrics);
+  const { metrics, recommendations } = useMetricsStore(state => state);
   const { activeProjectId, projects } = useCanvasStore();
 
   if (!isRunning) return null;
@@ -107,6 +108,45 @@ export function SimulationDashboard() {
             </span>
           </div>
         </div>
+        
+        {isCompleted && (
+          <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-between shadow-sm">
+            <div className="flex flex-col">
+               <span className="text-[10px] font-black text-blue-600/80 dark:text-blue-400/80 uppercase">Est. Monthly Cost</span>
+               <span className="text-sm font-bold text-blue-700 dark:text-blue-300">Architecture Total</span>
+            </div>
+            <div className="flex items-center text-lg font-black text-blue-700 dark:text-blue-300">
+               <DollarSign className="w-5 h-5 mr-0.5" />
+               {useScalingStore.getState().estimatedMonthlyCost.toFixed(2)}
+            </div>
+          </div>
+        )}
+
+        {/* Performance Recommendations */}
+        {isCompleted && recommendations.length > 0 && (
+          <div className="space-y-2 mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              Insights & Recommendations
+            </h3>
+            <div className="flex flex-col gap-2">
+              {recommendations.map((rec, i) => (
+                <div key={i} className={`p-3 rounded-xl border text-xs ${
+                  rec.severity === 'high' ? 'bg-destructive/10 border-destructive/30 text-destructive' :
+                  rec.severity === 'medium' ? 'bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400' :
+                  'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400'
+                }`}>
+                  <div className="font-bold flex items-center gap-1.5 mb-1">
+                    {rec.severity === 'high' && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+                    <span>{rec.nodeName} ({rec.nodeId})</span>
+                  </div>
+                  <p className="font-medium opacity-90 mb-2">{rec.issue}</p>
+                  <p className="opacity-80 leading-relaxed bg-background/50 p-1.5 rounded">{rec.recommendation}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Requests History List */}

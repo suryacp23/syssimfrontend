@@ -14,7 +14,9 @@ export type MetricEvent =
   | { type: 'QueueDropped'; nodeId: string; nodeName: string; timestamp: number }
   | { type: 'RequestTimeout'; requestId: string; timestamp: number }
   | { type: 'RequestRetried'; requestId: string; timestamp: number }
-  | { type: 'CircuitOpened'; nodeId: string; nodeName: string; timestamp: number };
+  | { type: 'CircuitOpened'; nodeId: string; nodeName: string; timestamp: number }
+  | { type: 'ScaleOut'; nodeId: string; nodeName: string; timestamp: number }
+  | { type: 'ScaleIn'; nodeId: string; nodeName: string; timestamp: number };
 
 class MetricsAggregatorClass {
   private latencyCalculator = new LatencyCalculator();

@@ -10,6 +10,11 @@ import { failureEngineInstance } from '../failure/FailureEngine';
 import { TimeoutHandler } from '../failure/TimeoutHandler';
 import { circuitBreakerInstance } from '../failure/CircuitBreaker';
 import { retryPolicyInstance } from '../failure/RetryPolicy';
+import { LoadGenerator } from '../load/LoadGenerator';
+import { useMetricsStore } from '@/store/metricsStore';
+import { useScalingStore } from '@/store/scalingStore';
+import { resourceManagerInstance } from '../load/ResourceManager';
+import { autoScalerInstance } from '../load/AutoScaler';
 
 // Default latency values per component type
 const DEFAULT_LATENCY: Record<string, number> = {
@@ -31,7 +36,6 @@ export class SimulationEngine {
   private requestCallStack: Record<string, string[]> = {}; // requestId -> nodeStack for return path
   private requestCacheFlags: Record<string, boolean> = {}; // requestId -> cacheHit boolean
 
-  // Initialize the simulation with 100 staggered requests
   public init(nodes: SystemNode[], edges: Edge[]) {
     this.graph = GraphBuilder.build(nodes, edges);
     this.eventQueue = [];
@@ -41,48 +45,56 @@ export class SimulationEngine {
     this.requestCallStack = {};
     this.requestCacheFlags = {};
 
-    // Initialize Metrics Aggregator & Failure Engine
+    // Initialize Metrics Aggregator, Failure Engine, Resource Manager & AutoScaler
     MetricsAggregator.init();
     failureEngineInstance.reset();
     failureEngineInstance.updateNodeHealth(this.graph);
+    resourceManagerInstance.init();
+    autoScalerInstance.reset();
 
     const clientNode = nodes.find(n => n.data?.type === 'client');
     if (!clientNode) return;
 
-    // Create 100 requests staggered every 200ms of virtual simulation time
-    const initialRequests: SimRequest[] = [];
-    for (let i = 0; i < 100; i++) {
-      const requestId = `req-${i + 1}`;
+    // Fetch load generation config
+    const scalingStore = useScalingStore.getState();
+    const { virtualUsers, requestsPerVu, trafficPattern } = scalingStore;
+
+    // Generate requests using LoadGenerator
+    const startEvents = LoadGenerator.generate(virtualUsers, requestsPerVu, trafficPattern, clientNode.id);
+    
+    // Sort and push to event queue
+    startEvents.sort((a, b) => a.time - b.time);
+    this.eventQueue = [...startEvents];
+
+    // Initialize request map and call stack, mark up to 200 for UI visibility
+    const initialUiRequests: SimRequest[] = [];
+    const MAX_UI_REQUESTS = 200;
+    const isUiVisible = startEvents.length <= MAX_UI_REQUESTS;
+
+    startEvents.forEach((evt, idx) => {
+      const visible = isUiVisible || idx < MAX_UI_REQUESTS;
       
       const req: SimRequest = {
-        id: requestId,
+        id: evt.requestId,
         status: 'pending',
         currentNodeId: null,
         path: [],
         latency: 0,
-        startTime: i * 200,
-        log: [`Scheduled to start at virtual time ${i * 200}ms.`],
+        startTime: evt.time,
+        log: [`Scheduled to start at virtual time ${Math.round(evt.time)}ms.`],
+        isUIVisible: visible,
       };
 
-      initialRequests.push(req);
-      this.requestMap[requestId] = req;
-      this.requestCallStack[requestId] = [];
+      this.requestMap[req.id] = req;
+      this.requestCallStack[req.id] = [];
 
-      // Schedule REQUEST_START event
-      this.eventQueue.push({
-        id: `evt-start-${requestId}`,
-        time: i * 200,
-        type: 'REQUEST_START',
-        requestId,
-        nodeId: clientNode.id,
-      });
-    }
+      if (visible) {
+        initialUiRequests.push(req);
+      }
+    });
 
-    // Sort queue by time
-    this.eventQueue.sort((a, b) => a.time - b.time);
-
-    // Sync initial requests to store
-    useSimulationStore.getState().setRequests(initialRequests);
+    // Sync ONLY visible requests to store
+    useSimulationStore.getState().setRequests(initialUiRequests);
   }
 
   // Run the clock forward by deltaTime (scaled by simulator speed)
@@ -114,6 +126,17 @@ export class SimulationEngine {
     if (completed) {
       store.completeSimulation();
       MetricsAggregator.flush();
+      
+      // Calculate final cost
+      const { costCalculatorInstance } = require('../load/CostCalculator');
+      const finalCost = costCalculatorInstance.calculateMonthlyCost(this.graph);
+      useScalingStore.getState().setEstimatedMonthlyCost(finalCost);
+
+      // Generate Performance Recommendations
+      const { performanceAnalyzerInstance } = require('../../metrics/analysis/PerformanceAnalyzer');
+      const { metrics, nodeMetrics, setRecommendations } = useMetricsStore.getState();
+      const recommendations = performanceAnalyzerInstance.analyze(nodeMetrics, metrics);
+      setRecommendations(recommendations);
     } else {
       MetricsAggregator.updateTime(this.virtualTime);
     }
@@ -181,32 +204,50 @@ export class SimulationEngine {
         const node = this.graph[nodeId]?.node;
         const type = node?.data?.type || 'api';
         const latency = (DEFAULT_LATENCY[type] || 10) + failureEngineInstance.getAddedLatency();
+        
+        // Implement Resource Pools
+        const replicas = useScalingStore.getState().nodeReplicas[nodeId] || 1;
+        const instanceSize = (node?.data?.instanceSize as any) || 'small';
+        
+        const capacity = resourceManagerInstance.getCapacity(type as string, replicas, instanceSize);
+        
+        const acquireResult = resourceManagerInstance.tryAcquire(nodeId, capacity, req.id);
 
-        // Implement Queue Dropping
-        if (type === 'queue') {
-          const currentQueueSize = useSimulationStore.getState().activeNodes[nodeId] || 0;
-          const capacity = 8; // Default queue limit
-          if (currentQueueSize >= capacity) {
-            req.log.push(`Queue Overflow! Active count is ${currentQueueSize} (limit ${capacity}). Request dropped.`);
-            MetricsAggregator.addEvent({
-              type: 'QueueDropped',
-              nodeId,
-              nodeName: node?.data?.label || nodeId,
-              timestamp: this.virtualTime,
-            });
-            this.completeRequest(req, 'failed', `Queue Overflow at ${node?.data?.label || 'Queue'}! Request dropped.`);
-            break;
-          }
+        if (acquireResult === 'dropped') {
+          req.log.push(`Queue Overflow at ${node?.data?.label || 'Node'}! Request dropped.`);
+          MetricsAggregator.addEvent({
+            type: 'QueueDropped',
+            nodeId,
+            nodeName: node?.data?.label || nodeId,
+            timestamp: this.virtualTime,
+          });
+          this.completeRequest(req, 'failed', `Queue Overflow at ${node?.data?.label || 'Node'}! Request dropped.`);
+          break;
         }
 
-        req.log.push(`Arrived at ${node?.data?.label || 'Node'} (${type}). Processing...`);
-        store.updateRequest(req.id, {
-          currentNodeId: nodeId,
-          path: [...req.path],
-          log: [...req.log],
-        });
+        if (acquireResult === 'queued') {
+          req.log.push(`Queued at ${node?.data?.label || 'Node'} (${type}).`);
+          if (req.isUIVisible) {
+            store.updateRequest(req.id, {
+              currentNodeId: nodeId,
+              path: [...req.path],
+              log: [...req.log],
+            });
+          }
+          // Request is queued, it will be resumed by NODE_COMPLETE of another request
+          break;
+        }
 
-        // Add node highlight glow
+        // Acquired successfully
+        req.log.push(`Processing at ${node?.data?.label || 'Node'} (${type}).`);
+        if (req.isUIVisible) {
+          store.updateRequest(req.id, {
+            currentNodeId: nodeId,
+            path: [...req.path],
+            log: [...req.log],
+          });
+        }
+
         store.incrementActiveNode(nodeId);
         MetricsAggregator.registerNodeActiveCount(
           nodeId,
@@ -215,7 +256,6 @@ export class SimulationEngine {
           useSimulationStore.getState().activeNodes[nodeId] || 0
         );
 
-        // Schedule NODE_COMPLETE
         this.scheduleEvent({
           id: `evt-complete-${req.id}-${nodeId}`,
           time: this.virtualTime + latency,
@@ -239,27 +279,47 @@ export class SimulationEngine {
              timestamp: this.virtualTime,
            } as unknown as MetricEvent);
            this.handleRequestFailure(req, event, `Request timed out (Latency ${req.latency}ms)`);
-           break;
-        }
-
-        const node = this.graph[nodeId]?.node;
-        req.log.push(`Processed by ${node?.data?.label || 'Node'} (+${latency}ms).`);
-        store.updateRequest(req.id, {
-          latency: req.latency,
-          log: [...req.log],
-        });
+           // Note: Timeout means it failed, but we still release the worker below
+        } else {
+           const node = this.graph[nodeId]?.node;
+           req.log.push(`Processed by ${node?.data?.label || 'Node'} (+${latency}ms).`);
+           if (req.isUIVisible) {
+             store.updateRequest(req.id, {
+               latency: req.latency,
+               log: [...req.log],
+             });
+           }
+        } // closing brace for else block
 
         // Remove node highlight glow
         store.decrementActiveNode(nodeId);
-        MetricsAggregator.registerNodeActiveCount(
-          nodeId,
-          node?.data?.label || nodeId,
-          node?.data?.type || 'api',
-          useSimulationStore.getState().activeNodes[nodeId] || 0
-        );
-
-        // Increment processed node count
         store.incrementProcessedNode(nodeId);
+
+        // Release worker and pick next from queue
+        const nextReqId = resourceManagerInstance.release(nodeId);
+        if (nextReqId) {
+          const nextReq = this.requestMap[nextReqId];
+          const node = this.graph[nodeId]?.node;
+          const type = node?.data?.type || 'api';
+          const newLatency = (DEFAULT_LATENCY[type] || 10) + failureEngineInstance.getAddedLatency();
+
+          if (nextReq) {
+            nextReq.log.push(`Resumed processing at ${node?.data?.label || 'Node'} (${type}).`);
+            store.incrementActiveNode(nodeId);
+            this.scheduleEvent({
+              id: `evt-complete-${nextReqId}-${nodeId}-${this.virtualTime}`,
+              time: this.virtualTime + newLatency,
+              type: 'NODE_COMPLETE',
+              requestId: nextReqId,
+              nodeId: nodeId,
+              data: { latency: newLatency },
+            });
+          }
+        }
+
+        // Evaluate auto-scaling
+        autoScalerInstance.evaluate(this.virtualTime, this.graph);
+        const node = this.graph[nodeId]?.node;
 
         // Record Node Visit in metrics
         MetricsAggregator.addEvent({
@@ -325,25 +385,68 @@ export class SimulationEngine {
       return;
     }
 
-    // 1. Load Balancer Round Robin Outgoing Allocation
+    // 1. Load Balancer Allocation
     if (type === 'loadBalancer') {
-      let rrIndex = this.lbIndexMap[nodeId] || 0;
-      const initialIndex = rrIndex;
-      let targetEdge = outgoing[rrIndex % outgoing.length];
-      
-      // Failover logic
-      while (failureEngineInstance.getNodeStatus(targetEdge.targetId, this.virtualTime) === 'unavailable') {
-        rrIndex++;
-        if ((rrIndex % outgoing.length) === (initialIndex % outgoing.length)) {
-          // All downstream nodes unavailable
-          break;
-        }
-        targetEdge = outgoing[rrIndex % outgoing.length];
-      }
-      
-      this.lbIndexMap[nodeId] = (rrIndex + 1) % outgoing.length;
+      const algo = useScalingStore.getState().loadBalancerAlgo || 'roundRobin';
+      let targetEdge = outgoing[0];
 
-      req.log.push(`Load balanced (Round Robin index ${rrIndex}) to API.`);
+      // Filter out unavailable downstream nodes
+      const availableEdges = outgoing.filter(e => 
+        failureEngineInstance.getNodeStatus(e.targetId, this.virtualTime) !== 'unavailable'
+      );
+
+      if (availableEdges.length === 0) {
+        this.completeRequest(req, 'failed', `Load Balancer failed: All downstream API servers are unavailable.`);
+        return;
+      }
+
+      if (algo === 'roundRobin') {
+        let rrIndex = this.lbIndexMap[nodeId] || 0;
+        targetEdge = availableEdges[rrIndex % availableEdges.length];
+        this.lbIndexMap[nodeId] = (rrIndex + 1) % availableEdges.length;
+        req.log.push(`Load balanced (Round Robin) to API.`);
+      } 
+      else if (algo === 'leastConnections') {
+        let minActive = Infinity;
+        let selectedEdge = availableEdges[0];
+        
+        availableEdges.forEach(edge => {
+          const stats = resourceManagerInstance.getStats(edge.targetId, { maxWorkers: 0, maxQueue: 0, memoryMb: 0 }); // We only need active count
+          const active = stats.active + stats.queued; // Total connections/requests queued
+          if (active < minActive) {
+            minActive = active;
+            selectedEdge = edge;
+          }
+        });
+        
+        targetEdge = selectedEdge;
+        req.log.push(`Load balanced (Least Connections) to API.`);
+      }
+      else if (algo === 'random') {
+        const randomIndex = Math.floor(Math.random() * availableEdges.length);
+        targetEdge = availableEdges[randomIndex];
+        req.log.push(`Load balanced (Random) to API.`);
+      }
+      else if (algo === 'weightedRoundRobin') {
+        // Simplified: use random for now or base it on node capacity
+        // Assuming capacity as weight:
+        const totalCapacity = availableEdges.reduce((sum, e) => {
+          const reps = useScalingStore.getState().nodeReplicas[e.targetId] || 1;
+          return sum + reps;
+        }, 0);
+        
+        let roll = Math.random() * totalCapacity;
+        for (const edge of availableEdges) {
+          const reps = useScalingStore.getState().nodeReplicas[edge.targetId] || 1;
+          roll -= reps;
+          if (roll <= 0) {
+            targetEdge = edge;
+            break;
+          }
+        }
+        req.log.push(`Load balanced (Weighted Round Robin) to API.`);
+      }
+
       this.dispatchTravel(req, targetEdge.edgeId, targetEdge.targetId);
       return;
     }

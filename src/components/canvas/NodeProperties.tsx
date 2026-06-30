@@ -32,6 +32,7 @@ export function NodeProperties() {
   const [label, setLabel] = useState('');
   const [width, setWidth] = useState<number>(150);
   const [height, setHeight] = useState<number>(60);
+  const [instanceSize, setInstanceSize] = useState<string>('small');
 
   // Edge states
   const [edgeLabel, setEdgeLabel] = useState('');
@@ -42,8 +43,9 @@ export function NodeProperties() {
       setLabel(selectedNode.data.label || '');
       setWidth(selectedNode.data.width || 150);
       setHeight(selectedNode.data.height || 60);
+      setInstanceSize(selectedNode.data.instanceSize as string || 'small');
     }
-  }, [selectedNode?.id, selectedNode?.data.label, selectedNode?.data.width, selectedNode?.data.height]);
+  }, [selectedNode?.id, selectedNode?.data.label, selectedNode?.data.width, selectedNode?.data.height, selectedNode?.data.instanceSize]);
 
   useEffect(() => {
     if (selectedEdge) {
@@ -180,6 +182,12 @@ export function NodeProperties() {
     if (selectedNode) updateNodeData(selectedNode.id, { height: val });
   };
 
+  const handleInstanceSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setInstanceSize(val);
+    if (selectedNode) updateNodeData(selectedNode.id, { instanceSize: val as any });
+  };
+
   return (
     <aside className="w-80 border-l p-4 shrink-0 bg-card overflow-y-auto flex flex-col h-full">
       <h2 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider">Node Properties</h2>
@@ -218,6 +226,28 @@ export function NodeProperties() {
             max={300}
           />
         </div>
+
+        {selectedNode?.data?.type && ['api', 'database', 'redis', 'queue', 'kafka'].includes(selectedNode.data.type as string) && (
+          <div className="space-y-2 pt-4 border-t">
+            <Label htmlFor="instance-size" className="flex items-center justify-between">
+              Instance Size
+              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Vertical Scaling</span>
+            </Label>
+            <select
+              id="instance-size"
+              value={instanceSize}
+              onChange={handleInstanceSizeChange}
+              className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-950 cursor-pointer"
+            >
+              <option value="small">Small (Base Capacity)</option>
+              <option value="medium">Medium (2x Capacity)</option>
+              <option value="large">Large (4x Capacity)</option>
+            </select>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Affects max threads, queue capacity, memory, and cost.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="mt-6 pt-6 border-t">

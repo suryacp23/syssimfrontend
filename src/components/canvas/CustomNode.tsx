@@ -6,6 +6,7 @@ import { MonitorSmartphone, Server, Database, Container, Box, Network, AlertCirc
 import { cn } from '@/lib/utils';
 import { useSimulationStore } from '@/store/simulationStore';
 import { useFailureStore } from '@/store/failureStore';
+import { useScalingStore } from '@/store/scalingStore';
 
 export function CustomNode({ id, data, selected }: { id: string; data: SystemNodeData; selected: boolean }) {
   const activeCount = useSimulationStore(state => state.activeNodes[id] || 0);
@@ -13,6 +14,7 @@ export function CustomNode({ id, data, selected }: { id: string; data: SystemNod
   const processedCount = useSimulationStore(state => state.processedNodes[id] || 0);
   const isSimulationActive = useSimulationStore(state => state.isRunning);
   const healthStatus = useFailureStore(state => state.healthStatus[id] || 'healthy');
+  const replicas = useScalingStore(state => state.nodeReplicas[id] || 1);
 
   const getIcon = () => {
     switch (data.type) {
@@ -111,6 +113,14 @@ export function CustomNode({ id, data, selected }: { id: string; data: SystemNod
 
       <Handle type="source" position={Position.Bottom} id="bottom" className="w-2 h-2 !bg-primary/50 !border-background" />
       <Handle type="source" position={Position.Right} id="right" className="w-2 h-2 !bg-primary/50 !border-background" />
+
+      {/* Auto-Scaling Replicas Badge */}
+      {replicas > 1 && (
+        <div className="absolute -top-3 right-2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-sm shadow-sm flex items-center gap-1 border border-blue-600 z-10">
+          <Server className="w-2.5 h-2.5" />
+          <span>x{replicas}</span>
+        </div>
+      )}
 
       {/* Active Processing Count Badge */}
       {isActive && (

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { PerformanceRecommendation } from '@/metrics/analysis/PerformanceAnalyzer';
 
 export interface TimeSeriesDataPoint {
   time: number; // elapsed seconds of virtual time
@@ -52,13 +53,14 @@ export interface SimulationRun {
   projectName: string;
   metrics: AggregateMetrics;
   nodeMetrics: Record<string, NodeMetricsSummary>;
+  recommendations: PerformanceRecommendation[];
 }
 
 export interface MetricAlert {
   id: string;
   type: 'warning' | 'error' | 'info';
   message: string;
-  timestamp: number; // virtual time
+  timestamp: number; 
 }
 
 interface MetricsState {
@@ -66,6 +68,7 @@ interface MetricsState {
   history: TimeSeriesDataPoint[];
   nodeMetrics: Record<string, NodeMetricsSummary>;
   alerts: MetricAlert[];
+  recommendations: PerformanceRecommendation[];
   isFullDashboardOpen: boolean;
   pastRuns: SimulationRun[];
 
@@ -73,8 +76,10 @@ interface MetricsState {
     metrics: AggregateMetrics,
     history: TimeSeriesDataPoint[],
     nodeMetrics: Record<string, NodeMetricsSummary>,
-    alerts: MetricAlert[]
+    alerts: MetricAlert[],
+    recommendations?: PerformanceRecommendation[]
   ) => void;
+  setRecommendations: (recs: PerformanceRecommendation[]) => void;
   toggleFullDashboard: (open?: boolean) => void;
   addAlert: (alert: Omit<MetricAlert, 'id'>) => void;
   clearAlerts: () => void;
@@ -111,11 +116,16 @@ export const useMetricsStore = create<MetricsState>((set, get) => ({
   history: [],
   nodeMetrics: {},
   alerts: [],
+  recommendations: [],
   isFullDashboardOpen: false,
   pastRuns: [],
 
-  setMetricsData: (metrics, history, nodeMetrics, alerts) => {
-    set({ metrics, history, nodeMetrics, alerts });
+  setMetricsData: (metrics, history, nodeMetrics, alerts, recommendations = []) => {
+    set({ metrics, history, nodeMetrics, alerts, recommendations });
+  },
+
+  setRecommendations: (recommendations) => {
+    set({ recommendations });
   },
 
   toggleFullDashboard: (open) => {
@@ -127,7 +137,7 @@ export const useMetricsStore = create<MetricsState>((set, get) => ({
   addAlert: (alert) => {
     const id = `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     set((state) => ({
-      alerts: [...state.alerts, { ...alert, id }].slice(-10), // keep last 10 alerts
+      alerts: [...state.alerts, { ...alert, id }].slice(-10),
     }));
   },
 
@@ -136,16 +146,17 @@ export const useMetricsStore = create<MetricsState>((set, get) => ({
   },
 
   saveRun: (projectName) => {
-    const { metrics, nodeMetrics } = get();
+    const { metrics, nodeMetrics, recommendations } = get();
     const run: SimulationRun = {
       id: `run-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
       projectName,
       metrics: { ...metrics },
       nodeMetrics: { ...nodeMetrics },
+      recommendations: [...recommendations],
     };
     set((state) => ({
-      pastRuns: [...state.pastRuns, run].slice(-5), // keep last 5 runs
+      pastRuns: [...state.pastRuns, run].slice(-5), 
     }));
   },
 
@@ -159,6 +170,7 @@ export const useMetricsStore = create<MetricsState>((set, get) => ({
       history: [],
       nodeMetrics: {},
       alerts: [],
+      recommendations: [],
     });
   },
 }));

@@ -7,4 +7,5 @@ export interface SimRequest {
   startTime: number;
   endTime?: number;
   log: string[];
+  isUIVisible?: boolean;
 }

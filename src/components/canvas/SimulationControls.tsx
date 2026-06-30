@@ -8,6 +8,7 @@ import { Play, Pause, RotateCcw, AlertTriangle, Activity, Zap } from 'lucide-rea
 import { simulatorInstance } from '@/simulation/engine/Simulator';
 import { useMetricsStore } from '@/store/metricsStore';
 import { FailurePanel } from '../failure/FailurePanel';
+import { LoadPanel } from '../scaling/LoadPanel';
 
 export function SimulationControls() {
   const { 
@@ -24,16 +25,18 @@ export function SimulationControls() {
   } = useSimulationStore();
 
   const [showFailurePanel, setShowFailurePanel] = React.useState(false);
+  const [showLoadPanel, setShowLoadPanel] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        showFailurePanel &&
+        (showFailurePanel || showLoadPanel) &&
         containerRef.current &&
         !containerRef.current.contains(event.target as Node)
       ) {
         setShowFailurePanel(false);
+        setShowLoadPanel(false);
       }
     };
 
@@ -42,7 +45,7 @@ export function SimulationControls() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside, { capture: true });
     };
-  }, [showFailurePanel]);
+  }, [showFailurePanel, showLoadPanel]);
 
   const { activeProjectId, projects } = useCanvasStore();
   const nodes = activeProjectId ? projects[activeProjectId]?.nodes || [] : [];
@@ -69,6 +72,12 @@ export function SimulationControls() {
 
   return (
     <div ref={containerRef} className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+      {/* Load Panel */}
+      {showLoadPanel && <LoadPanel />}
+      
+      {/* Failure Panel */}
+      {showFailurePanel && <FailurePanel />}
+
       {/* Validation Errors Alert */}
       {validationErrors.length > 0 && (
         <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-destructive/15 border border-destructive/20 text-destructive text-xs max-w-sm shadow-lg backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
@@ -126,7 +135,23 @@ export function SimulationControls() {
             <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
             
             <Button
-              onClick={() => setShowFailurePanel(!showFailurePanel)}
+              onClick={() => {
+                setShowLoadPanel(!showLoadPanel);
+                setShowFailurePanel(false);
+              }}
+              variant="outline"
+              size="sm"
+              className={`gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold transition-colors ${showLoadPanel ? 'bg-emerald-500/10' : 'bg-emerald-500/5 hover:bg-emerald-500/10'}`}
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Load & Scale</span>
+            </Button>
+
+            <Button
+              onClick={() => {
+                setShowFailurePanel(!showFailurePanel);
+                setShowLoadPanel(false);
+              }}
               variant="outline"
               size="sm"
               className={`gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold transition-colors ${showFailurePanel ? 'bg-rose-500/10' : 'bg-rose-500/5 hover:bg-rose-500/10'}`}
