@@ -6,6 +6,7 @@ import { CanvasSidebar } from "@/components/canvas/CanvasSidebar";
 import { NodeProperties } from "@/components/canvas/NodeProperties";
 import { SaveIndicator } from "@/components/canvas/SaveIndicator";
 import { SimulationDashboard } from "@/components/canvas/SimulationDashboard";
+import { MetricsDashboard } from "@/metrics/dashboard/MetricsDashboard";
 import { ProjectNameHeader } from "@/components/canvas/ProjectNameHeader";
 
 export default function EditorLayout({
@@ -45,6 +46,7 @@ export default function EditorLayout({
         {/* Properties Panel & Simulation Dashboard */}
         <NodeProperties />
         <SimulationDashboard />
+        <MetricsDashboard />
       </div>
 
       {/* Bottom Status Bar */}

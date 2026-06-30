@@ -26,7 +26,8 @@ export function UserProfile() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    setMounted(true);
+    const t = setTimeout(() => setMounted(true), 10);
+    return () => clearTimeout(t);
   }, []);
 
   const handleLogout = () => {

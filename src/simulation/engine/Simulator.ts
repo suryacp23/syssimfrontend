@@ -4,6 +4,7 @@ import { SimRequest } from '../types/Request';
 import { SimEvent } from '../types/Event';
 import { SystemNode } from '@/store/canvasStore';
 import { Edge } from '@xyflow/react';
+import { MetricsAggregator } from '@/metrics/aggregator/MetricsAggregator';
 
 // Default latency values per component type
 const DEFAULT_LATENCY: Record<string, number> = {
@@ -34,6 +35,9 @@ export class SimulationEngine {
     this.requestMap = {};
     this.requestCallStack = {};
     this.requestCacheFlags = {};
+
+    // Initialize Metrics Aggregator
+    MetricsAggregator.init();
 
     const clientNode = nodes.find(n => n.data?.type === 'client');
     if (!clientNode) return;
@@ -99,6 +103,9 @@ export class SimulationEngine {
 
     if (completed) {
       store.completeSimulation();
+      MetricsAggregator.flush();
+    } else {
+      MetricsAggregator.updateTime(this.virtualTime);
     }
 
     return { completed };
@@ -121,6 +128,12 @@ export class SimulationEngine {
           log: [...req.log],
         });
 
+        MetricsAggregator.addEvent({
+          type: 'RequestStarted',
+          requestId: req.id,
+          timestamp: this.virtualTime,
+        });
+
         // Arrive at the client node immediately
         this.scheduleEvent({
           id: `evt-arrive-${req.id}-${event.nodeId}`,
@@ -141,6 +154,23 @@ export class SimulationEngine {
         const type = node?.data?.type || 'api';
         const latency = DEFAULT_LATENCY[type] || 10;
 
+        // Implement Queue Dropping
+        if (type === 'queue') {
+          const currentQueueSize = useSimulationStore.getState().activeNodes[nodeId] || 0;
+          const capacity = 8; // Default queue limit
+          if (currentQueueSize >= capacity) {
+            req.log.push(`Queue Overflow! Active count is ${currentQueueSize} (limit ${capacity}). Request dropped.`);
+            MetricsAggregator.addEvent({
+              type: 'QueueDropped',
+              nodeId,
+              nodeName: node?.data?.label || nodeId,
+              timestamp: this.virtualTime,
+            });
+            this.completeRequest(req, 'failed', `Queue Overflow at ${node?.data?.label || 'Queue'}! Request dropped.`);
+            break;
+          }
+        }
+
         req.log.push(`Arrived at ${node?.data?.label || 'Node'} (${type}). Processing...`);
         store.updateRequest(req.id, {
           currentNodeId: nodeId,
@@ -150,6 +180,12 @@ export class SimulationEngine {
 
         // Add node highlight glow
         store.incrementActiveNode(nodeId);
+        MetricsAggregator.registerNodeActiveCount(
+          nodeId,
+          node?.data?.label || nodeId,
+          type,
+          useSimulationStore.getState().activeNodes[nodeId] || 0
+        );
 
         // Schedule NODE_COMPLETE
         this.scheduleEvent({
@@ -177,9 +213,25 @@ export class SimulationEngine {
 
         // Remove node highlight glow
         store.decrementActiveNode(nodeId);
+        MetricsAggregator.registerNodeActiveCount(
+          nodeId,
+          node?.data?.label || nodeId,
+          node?.data?.type || 'api',
+          useSimulationStore.getState().activeNodes[nodeId] || 0
+        );
 
         // Increment processed node count
         store.incrementProcessedNode(nodeId);
+
+        // Record Node Visit in metrics
+        MetricsAggregator.addEvent({
+          type: 'NodeVisited',
+          nodeId,
+          nodeName: node?.data?.label || nodeId,
+          nodeType: node?.data?.type || 'api',
+          latency,
+          timestamp: this.virtualTime,
+        });
 
         // Determine routing direction
         this.routeRequest(req, nodeId);
@@ -268,13 +320,35 @@ export class SimulationEngine {
 
     // 3. Redis Cache Hit/Miss Routing
     if (type === 'redis') {
-      const isCacheHit = this.requestCacheFlags[req.id] !== false;
+      let isCacheHit = this.requestCacheFlags[req.id];
+      if (isCacheHit === undefined) {
+        // Roll cache hit decision at Redis if not pre-decided at API server
+        isCacheHit = Math.random() < 0.8; // 80% Cache Hit Rate
+        this.requestCacheFlags[req.id] = isCacheHit;
+        req.log.push(`Checking Cache (at Redis): Decision rolled as ${isCacheHit ? 'HIT (80%)' : 'MISS (20%)'}.`);
+      }
+
+      const nodeName = adj.node.data?.label || nodeId;
 
       if (isCacheHit) {
         // Cache Hit: ends at Redis!
+        MetricsAggregator.addEvent({
+          type: 'CacheHit',
+          nodeId,
+          nodeName,
+          nodeType: 'redis',
+          timestamp: this.virtualTime,
+        });
         this.completeRequest(req, 'completed', `Cache Hit! Redis returning values immediately.`);
       } else {
         // Cache Miss: forwards to Database
+        MetricsAggregator.addEvent({
+          type: 'CacheMiss',
+          nodeId,
+          nodeName,
+          nodeType: 'redis',
+          timestamp: this.virtualTime,
+        });
         req.log.push(`Cache Miss! Redis fetching from Database.`);
         const dbEdge = outgoing.find(e => {
           const tgt = this.graph[e.targetId]?.node;
@@ -322,6 +396,21 @@ export class SimulationEngine {
       currentNodeId: null,
       log: [...req.log],
     });
+
+    if (status === 'completed') {
+      MetricsAggregator.addEvent({
+        type: 'RequestCompleted',
+        requestId: req.id,
+        latency: req.latency,
+        timestamp: this.virtualTime,
+      });
+    } else {
+      MetricsAggregator.addEvent({
+        type: 'RequestFailed',
+        requestId: req.id,
+        timestamp: this.virtualTime,
+      });
+    }
   }
 }
 

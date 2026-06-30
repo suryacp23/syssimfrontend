@@ -3,10 +3,12 @@
 import React from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
 import { useCanvasStore } from '@/store/canvasStore';
+import { useMetricsStore } from '@/store/metricsStore';
 import { CheckCircle2, XCircle, Clock, ChevronRight, Activity } from 'lucide-react';
 
 export function SimulationDashboard() {
-  const { isRunning, isCompleted, requests, metrics, selectedRequestId, setSelectedRequestId } = useSimulationStore();
+  const { isRunning, isCompleted, requests, selectedRequestId, setSelectedRequestId } = useSimulationStore();
+  const metrics = useMetricsStore(state => state.metrics);
   const { activeProjectId, projects } = useCanvasStore();
 
   if (!isRunning) return null;
@@ -15,10 +17,7 @@ export function SimulationDashboard() {
   
   const selectedRequest = requests.find(r => r.id === selectedRequestId);
 
-  const totalHits = metrics.cacheHits + metrics.cacheMisses;
-  const hitRate = totalHits > 0 
-    ? Math.round((metrics.cacheHits / totalHits) * 100) 
-    : 0;
+  const hitRate = metrics.cacheHitRatio;
 
   const getNodeLabel = (nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
@@ -27,19 +26,40 @@ export function SimulationDashboard() {
 
   return (
     <aside className="w-80 border-l p-4 shrink-0 bg-card overflow-y-auto flex flex-col h-full z-15 select-none animate-in slide-in-from-right duration-200">
-      <div className="flex items-center gap-2 border-b pb-3 mb-4">
-        {isCompleted ? (
-          <>
-            <CheckCircle2 className="w-4 h-4 text-green-500 animate-bounce" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-green-600 dark:text-green-400">Simulation Report</h2>
-          </>
-        ) : (
-          <>
-            <Activity className="w-4 h-4 text-blue-500 animate-pulse" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Simulation Panel</h2>
-          </>
-        )}
+      <div className="flex items-center justify-between border-b pb-3 mb-4">
+        <div className="flex items-center gap-2">
+          {isCompleted ? (
+            <>
+              <CheckCircle2 className="w-4 h-4 text-green-500 animate-bounce" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-green-600 dark:text-green-400">Simulation Report</h2>
+            </>
+          ) : (
+            <>
+              <Activity className="w-4 h-4 text-blue-500 animate-pulse" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Simulation Panel</h2>
+            </>
+          )}
+        </div>
+        <button
+          onClick={() => useMetricsStore.getState().toggleFullDashboard(true)}
+          className="p-1 hover:bg-muted rounded text-zinc-500 hover:text-foreground cursor-pointer"
+          title="Open advanced Observability Dashboard"
+        >
+          <Activity className="w-4 h-4 text-blue-500 animate-pulse" />
+        </button>
       </div>
+
+      {/* Observability center banner button */}
+      <button
+        onClick={() => useMetricsStore.getState().toggleFullDashboard(true)}
+        className="mb-4 w-full flex items-center justify-between px-3 py-2 border border-blue-500/35 bg-blue-500/5 hover:bg-blue-500/10 rounded-xl cursor-pointer text-xs font-bold text-blue-600 dark:text-blue-400 transition-colors animate-pulse"
+      >
+        <div className="flex items-center gap-1.5">
+          <Activity className="w-3.5 h-3.5" />
+          <span>Open Observability Center</span>
+        </div>
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
 
       {/* Metrics Counters */}
       <div className="space-y-4 mb-6">
@@ -60,14 +80,14 @@ export function SimulationDashboard() {
               <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
               Completed
             </span>
-            <span className="font-bold text-green-600 dark:text-green-400">{metrics.completed}</span>
+            <span className="font-bold text-green-600 dark:text-green-400">{metrics.completedRequests}</span>
           </div>
           <div className="flex items-center justify-between text-xs border-t pt-2">
             <span className="font-semibold text-zinc-500 flex items-center gap-1.5">
               <XCircle className="w-3.5 h-3.5 text-destructive" />
               Failed
             </span>
-            <span className="font-bold text-destructive">{metrics.failed}</span>
+            <span className="font-bold text-destructive">{metrics.failedRequests}</span>
           </div>
         </div>
 
@@ -77,7 +97,7 @@ export function SimulationDashboard() {
             <span className="font-semibold text-zinc-500">Average Latency</span>
             <span className="font-bold text-foreground flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-zinc-400" />
-              {metrics.avgLatency}ms
+              {metrics.averageLatency}ms
             </span>
           </div>
           <div className="flex items-center justify-between text-xs border-t pt-2">

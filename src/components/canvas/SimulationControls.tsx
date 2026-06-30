@@ -4,8 +4,9 @@ import React from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
 import { useCanvasStore } from '@/store/canvasStore';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Play, Pause, RotateCcw, AlertTriangle, Activity } from 'lucide-react';
 import { simulatorInstance } from '@/simulation/engine/Simulator';
+import { useMetricsStore } from '@/store/metricsStore';
 
 export function SimulationControls() {
   const { 
@@ -70,6 +71,16 @@ export function SimulationControls() {
             </div>
             <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
             <Button
+              onClick={() => useMetricsStore.getState().toggleFullDashboard(true)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/5 hover:bg-blue-500/10 font-bold"
+            >
+              <Activity className="w-3.5 h-3.5 text-blue-500" />
+              <span>Show Report Dashboard</span>
+            </Button>
+            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
+            <Button
               onClick={handleReset}
               variant="outline"
               size="sm"
@@ -117,6 +128,18 @@ export function SimulationControls() {
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset</span>
+            </Button>
+
+            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
+
+            <Button
+              onClick={() => useMetricsStore.getState().toggleFullDashboard(true)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/5 hover:bg-blue-500/10 font-bold"
+            >
+              <Activity className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+              <span>Observability</span>
             </Button>
           </>
         )}
