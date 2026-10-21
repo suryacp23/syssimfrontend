@@ -1,0 +1,9 @@
+export enum RequestState {
+  CREATED = 'CREATED',
+  WAITING = 'WAITING',
+  QUEUED = 'QUEUED',
+  PROCESSING = 'PROCESSING',
+  NETWORK = 'NETWORK',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED'
+}

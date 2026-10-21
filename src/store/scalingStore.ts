@@ -18,6 +18,9 @@ interface ScalingState {
   // Cost tracking
   estimatedMonthlyCost: number;
 
+  // Generation Logs
+  generationLogs: string[];
+
   // Actions
   setVirtualUsers: (v: number) => void;
   setRequestsPerVu: (r: number) => void;
@@ -26,6 +29,8 @@ interface ScalingState {
   setScalingPolicy: (nodeId: string, policy: ScalingPolicy) => void;
   setNodeReplicas: (nodeId: string, count: number) => void;
   setEstimatedMonthlyCost: (cost: number) => void;
+  addGenerationLog: (log: string) => void;
+  clearGenerationLogs: () => void;
   resetScale: () => void;
 }
 
@@ -38,6 +43,7 @@ export const useScalingStore = create<ScalingState>((set, get) => ({
   scalingPolicies: {},
   nodeReplicas: {},
   estimatedMonthlyCost: 0,
+  generationLogs: [],
 
   setVirtualUsers: (v) => set({ virtualUsers: v }),
   setRequestsPerVu: (r) => set({ requestsPerVu: r }),
@@ -50,9 +56,14 @@ export const useScalingStore = create<ScalingState>((set, get) => ({
     nodeReplicas: { ...state.nodeReplicas, [nodeId]: count }
   })),
   setEstimatedMonthlyCost: (cost) => set({ estimatedMonthlyCost: cost }),
-  
-  resetScale: () => set({
-    nodeReplicas: {}, // Reset back to 1 for all nodes
+  addGenerationLog: (log) => set(state => ({ 
+    generationLogs: [...state.generationLogs, log].slice(-5) 
+  })),
+  clearGenerationLogs: () => set({ generationLogs: [] }),
+  resetScale: () => set({ 
+    scalingPolicies: {}, 
+    nodeReplicas: {},
+    generationLogs: [],
     estimatedMonthlyCost: 0
   })
 }));

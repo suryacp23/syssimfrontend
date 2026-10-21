@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useSimulationStore } from '@/store/simulationStore';
 import { useFailureStore } from '@/store/failureStore';
 import { useScalingStore } from '@/store/scalingStore';
+import React from 'react';
 
 export function CustomNode({ id, data, selected }: { id: string; data: SystemNodeData; selected: boolean }) {
   const activeCount = useSimulationStore(state => state.activeNodes[id] || 0);
@@ -72,7 +73,7 @@ export function CustomNode({ id, data, selected }: { id: string; data: SystemNod
     if (activeCount <= 1) return 'bg-emerald-500';
     if (activeCount <= 3) return 'bg-amber-500';
     if (activeCount <= 6) return 'bg-orange-500';
-    return 'bg-rose-500 animate-ping';
+    return 'bg-rose-500';
   };
 
   const getBadgeColor = () => {
@@ -92,54 +93,70 @@ export function CustomNode({ id, data, selected }: { id: string; data: SystemNod
   };
 
   return (
-    <div
-      className={cn(
-        "relative flex items-center justify-center bg-card border-2 rounded-xl shadow-sm transition-all duration-300 ease-out overflow-hidden",
-        getHeatmapClass()
-      )}
-      style={{ width, height }}
-    >
-      {getHealthIndicator()}
-      <Handle type="target" position={Position.Top} id="top" className="w-2 h-2 !bg-primary/50 !border-background" />
-      <Handle type="target" position={Position.Left} id="left" className="w-2 h-2 !bg-primary/50 !border-background" />
-      
-      <div className={cn(
-        "flex items-center justify-center gap-3 w-full px-2 transition-all",
-        isSimulationActive && "pb-3.5"
-      )}>
-        <div className="shrink-0">{getIcon()}</div>
-        <div className="font-medium text-sm truncate max-w-[calc(100%-2.5rem)]">{data.label}</div>
+    <div className="relative" style={{ width, height }}>
+      {/* Replica Stack Visuals */}
+      {replicas > 1 && Array.from({ length: Math.min(replicas - 1, 3) }).map((_, idx) => (
+        <div
+          key={`replica-${idx}`}
+          className="absolute inset-0 bg-card border-2 border-blue-500/40 rounded-xl transition-all duration-300 pointer-events-none"
+          style={{
+            transform: `translate(${(idx + 1) * 6}px, ${(idx + 1) * 6}px)`,
+            zIndex: -1 - idx,
+            opacity: 1 - (idx * 0.2)
+          }}
+        />
+      ))}
+
+      {/* Main Node Body */}
+      <div
+        className={cn(
+          "absolute inset-0 flex items-center justify-center bg-card border-2 rounded-xl shadow-sm transition-all duration-300 ease-out overflow-hidden z-10",
+          getHeatmapClass()
+        )}
+      >
+        {getHealthIndicator()}
+        
+        <Handle type="target" position={Position.Top} id="top" className="w-2 h-2 !bg-primary/50 !border-background z-20" />
+        <Handle type="target" position={Position.Left} id="left" className="w-2 h-2 !bg-primary/50 !border-background z-20" />
+        
+        <div className={cn(
+          "flex items-center justify-center gap-3 w-full px-2 transition-all",
+          isSimulationActive && "pb-3.5"
+        )}>
+          <div className="shrink-0">{getIcon()}</div>
+          <div className="font-medium text-sm truncate max-w-[calc(100%-2.5rem)]">{data.label}</div>
+        </div>
+
+        <Handle type="source" position={Position.Bottom} id="bottom" className="w-2 h-2 !bg-primary/50 !border-background z-20" />
+        <Handle type="source" position={Position.Right} id="right" className="w-2 h-2 !bg-primary/50 !border-background z-20" />
+
+        {/* Active Processing Count Badge */}
+        {isActive && (
+          <div className={cn(
+            "absolute top-1 right-1 min-w-[14px] h-[14px] rounded-sm text-white flex items-center justify-center text-[8px] font-black px-0.5 pointer-events-none select-none z-20",
+            getBadgeColor()
+          )}>
+            {activeCount}
+          </div>
+        )}
+
+        {/* Static Simulation Statistics Overlay Footer */}
+        {isSimulationActive && (
+          <div className="absolute bottom-0 left-0 right-0 h-[15px] bg-zinc-100 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-2 text-[8px] font-black text-muted-foreground select-none font-mono z-20">
+            <span className="flex items-center gap-0.5">
+              <span className={cn("w-1 h-1 rounded-full", getBulletColor())} />
+              <span>ACT: {activeCount}</span>
+            </span>
+            <span>TOT: {processedCount}</span>
+          </div>
+        )}
       </div>
 
-      <Handle type="source" position={Position.Bottom} id="bottom" className="w-2 h-2 !bg-primary/50 !border-background" />
-      <Handle type="source" position={Position.Right} id="right" className="w-2 h-2 !bg-primary/50 !border-background" />
-
-      {/* Auto-Scaling Replicas Badge */}
+      {/* Auto-Scaling Replicas Badge (Hovering outside the node) */}
       {replicas > 1 && (
-        <div className="absolute -top-3 right-2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-sm shadow-sm flex items-center gap-1 border border-blue-600 z-10">
+        <div className="absolute -top-3 right-2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-sm shadow-sm flex items-center gap-1 border border-blue-600 z-30">
           <Server className="w-2.5 h-2.5" />
           <span>x{replicas}</span>
-        </div>
-      )}
-
-      {/* Active Processing Count Badge */}
-      {isActive && (
-        <div className={cn(
-          "absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full text-white flex items-center justify-center text-[8px] font-black px-0.5 pointer-events-none select-none",
-          getBadgeColor()
-        )}>
-          {activeCount}
-        </div>
-      )}
-
-      {/* Static Simulation Statistics Overlay Footer */}
-      {isSimulationActive && (
-        <div className="absolute bottom-0 left-0 right-0 h-[15px] bg-zinc-100 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-2 text-[8px] font-black text-muted-foreground select-none font-mono">
-          <span className="flex items-center gap-0.5">
-            <span className={cn("w-1 h-1 rounded-full", getBulletColor())} />
-            <span>ACT: {activeCount}</span>
-          </span>
-          <span>TOT: {processedCount}</span>
         </div>
       )}
     </div>

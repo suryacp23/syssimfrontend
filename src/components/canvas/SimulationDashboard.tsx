@@ -11,6 +11,7 @@ export function SimulationDashboard() {
   const { isRunning, isCompleted, requests, selectedRequestId, setSelectedRequestId } = useSimulationStore();
   const { metrics, recommendations } = useMetricsStore(state => state);
   const { activeProjectId, projects } = useCanvasStore();
+  const totalGenerated = useScalingStore(state => state.virtualUsers * state.requestsPerVu);
 
   if (!isRunning) return null;
 
@@ -19,6 +20,11 @@ export function SimulationDashboard() {
   const selectedRequest = requests.find(r => r.id === selectedRequestId);
 
   const hitRate = metrics.cacheHitRatio;
+  const activeVUs = new Set(
+    requests
+      .filter(r => r.status === 'PROCESSING' || r.status === 'QUEUED' || r.status === 'WAITING' || r.status === 'CREATED' || r.status === 'NETWORK')
+      .map(r => r.id.split('-')[1])
+  ).size;
 
   const getNodeLabel = (nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
@@ -65,13 +71,23 @@ export function SimulationDashboard() {
       {/* Metrics Counters */}
       <div className="space-y-4 mb-6">
         <div className="grid grid-cols-2 gap-2.5">
-          <div className="p-3 bg-muted/40 border rounded-xl flex flex-col gap-1">
-            <span className="text-[10px] font-black text-muted-foreground uppercase">Requests Run</span>
-            <span className="text-lg font-extrabold">{requests.length} / 100</span>
+          <div className="p-3 bg-muted/40 border border-blue-500/20 rounded-xl flex flex-col gap-1 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-2 opacity-10">
+              <Activity className="w-8 h-8 text-blue-500" />
+            </div>
+            <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase">Active VUs</span>
+            <span className="text-lg font-extrabold flex items-baseline gap-1">
+              {activeVUs} 
+              <span className="text-[10px] text-muted-foreground font-medium">live users</span>
+            </span>
           </div>
           <div className="p-3 bg-muted/40 border rounded-xl flex flex-col gap-1">
+            <span className="text-[10px] font-black text-muted-foreground uppercase">Requests Run</span>
+            <span className="text-lg font-extrabold">{requests.length} <span className="text-sm text-muted-foreground font-medium">/ {totalGenerated}</span></span>
+          </div>
+          <div className="p-3 bg-muted/40 border rounded-xl flex flex-col gap-1 col-span-2">
             <span className="text-[10px] font-black text-muted-foreground uppercase">Cache Hit Rate</span>
-            <span className="text-lg font-extrabold text-blue-600 dark:text-blue-400">{hitRate}%</span>
+            <span className="text-lg font-extrabold text-indigo-600 dark:text-indigo-400">{hitRate}%</span>
           </div>
         </div>
 
@@ -98,13 +114,13 @@ export function SimulationDashboard() {
             <span className="font-semibold text-zinc-500">Average Latency</span>
             <span className="font-bold text-foreground flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-zinc-400" />
-              {metrics.averageLatency}ms
+              {Math.round(metrics.averageLatency)}ms
             </span>
           </div>
           <div className="flex items-center justify-between text-xs border-t pt-2">
             <span className="font-semibold text-zinc-500">Min / Max Latency</span>
             <span className="font-bold text-foreground">
-              {metrics.minLatency}ms / {metrics.maxLatency}ms
+              {Math.round(metrics.minLatency)}ms / {Math.round(metrics.maxLatency)}ms
             </span>
           </div>
         </div>
@@ -170,10 +186,10 @@ export function SimulationDashboard() {
               >
                 <span className="font-semibold">{req.id}</span>
                 <div className="flex items-center gap-1.5 text-[10px]">
-                  <span>{req.latency}ms</span>
-                  {req.status === 'completed' && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
-                  {req.status === 'failed' && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
-                  {req.status === 'processing' && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />}
+                  <span>{Math.round(req.latency)}ms</span>
+                  {req.status === 'COMPLETED' && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
+                  {req.status === 'FAILED' && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
+                  {(req.status === 'PROCESSING' || req.status === 'NETWORK' || req.status === 'QUEUED' || req.status === 'CREATED') && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />}
                 </div>
               </button>
             ))
@@ -187,9 +203,9 @@ export function SimulationDashboard() {
           <div className="flex items-center justify-between border-b pb-1.5">
             <span className="font-bold text-xs">{selectedRequest.id} Path</span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase ${
-              selectedRequest.status === 'completed' 
+              selectedRequest.status === 'COMPLETED' 
                 ? 'bg-green-155 text-green-800 dark:bg-green-950/40 dark:text-green-400'
-                : selectedRequest.status === 'failed'
+                : selectedRequest.status === 'FAILED'
                   ? 'bg-destructive/10 text-destructive'
                   : 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400'
             }`}>
@@ -214,10 +230,11 @@ export function SimulationDashboard() {
           <div className="space-y-1 border-t pt-2">
             <span className="text-[9px] font-black text-muted-foreground uppercase block mb-1">Timeline Logs</span>
             <div className="max-h-28 overflow-y-auto space-y-1 font-mono text-[10px] leading-relaxed text-muted-foreground">
-              {selectedRequest.log.map((logLine, idx) => (
+              {selectedRequest.logs.map((log, idx) => (
                 <div key={idx} className="flex gap-1.5 align-top">
-                  <span className="text-zinc-500 font-bold shrink-0">[{idx + 1}]</span>
-                  <span>{logLine}</span>
+                  <span className="text-zinc-500 font-bold shrink-0">[{Math.round(log.timestamp)}ms]</span>
+                  <span className="font-semibold text-zinc-700 dark:text-zinc-300">{getNodeLabel(log.nodeId)}:</span>
+                  <span>{log.event}</span>
                 </div>
               ))}
             </div>

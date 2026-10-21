@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
-import { simulatorInstance } from '@/simulation/engine/Simulator';
+import { simulatorInstance } from '@/simulation/engine/SimulationEngine';
 
 export function useSimulation() {
   const { isRunning, isPaused, isCompleted, speed } = useSimulationStore();

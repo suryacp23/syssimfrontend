@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
 import { useCanvasStore } from '@/store/canvasStore';
-import { CheckCircle2, XCircle, Clock, ChevronRight, CornerDownRight, Play, Filter, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ChevronRight, CornerDownRight, Play, Filter, ShieldAlert, Search } from 'lucide-react';
+import { RequestState } from '@/simulation/request/RequestState';
 
 export function RequestHistory() {
   const { requests, selectedRequestId, setSelectedRequestId } = useSimulationStore();
@@ -12,11 +13,15 @@ export function RequestHistory() {
   const nodes = activeProjectId ? projects[activeProjectId]?.nodes || [] : [];
   const selectedRequest = requests.find(r => r.id === selectedRequestId);
   
-  const [filter, setFilter] = useState<'all' | 'completed' | 'failed' | 'processing'>('all');
+  const [filter, setFilter] = useState<{
+    search: string;
+    type: 'all' | RequestState.COMPLETED | RequestState.FAILED | RequestState.PROCESSING;
+  }>({ search: '', type: 'all' });
 
   const filteredRequests = requests.filter(req => {
-    if (filter === 'all') return true;
-    return req.status === filter;
+    const matchSearch = filter.search === '' || req.id.toLowerCase().includes(filter.search.toLowerCase());
+    const matchType = filter.type === 'all' || req.status === filter.type;
+    return matchSearch && matchType;
   });
 
   const getNodeLabel = (nodeId: string) => {
@@ -26,9 +31,9 @@ export function RequestHistory() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-      case 'failed': return 'bg-red-500/10 text-red-500 border-red-500/20';
-      case 'processing': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+      case RequestState.COMPLETED: return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+      case RequestState.FAILED: return 'bg-red-500/10 text-red-500 border-red-500/20';
+      case RequestState.PROCESSING: return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
       default: return 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20';
     }
   };
@@ -47,21 +52,24 @@ export function RequestHistory() {
           </span>
         </div>
 
-        {/* Filters Tabs */}
-        <div className="grid grid-cols-4 border-b border-border/60 text-[10px] font-bold text-muted-foreground bg-muted/5 p-1 gap-1 select-none">
-          {(['all', 'completed', 'failed', 'processing'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`py-1 rounded-lg text-center capitalize cursor-pointer transition-colors ${
-                filter === f
-                  ? 'bg-background text-foreground border shadow-sm font-extrabold'
-                  : 'hover:bg-muted/40 hover:text-foreground'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+        {/* Filters & Search */}
+        <div className="p-2 border-b border-border/60 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1.5 w-3.5 h-3.5 text-muted-foreground" />
+            <input 
+              type="text" 
+              placeholder="Search request..." 
+              className="w-full pl-7 pr-2 py-1 text-xs bg-background border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={filter.search}
+              onChange={(e) => setFilter({...filter, search: e.target.value})}
+            />
+          </div>
+          <div className="flex gap-1 text-[10px] font-bold overflow-x-auto pb-1">
+            <button onClick={() => setFilter({ ...filter, type: 'all' })} className={`px-2.5 py-1 rounded-full whitespace-nowrap ${filter.type === 'all' ? 'bg-muted text-foreground' : 'hover:bg-muted text-muted-foreground'}`}>All</button>
+            <button onClick={() => setFilter({ ...filter, type: RequestState.COMPLETED })} className={`px-2.5 py-1 rounded-full whitespace-nowrap ${filter.type === RequestState.COMPLETED ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'hover:bg-muted text-muted-foreground'}`}>Completed</button>
+            <button onClick={() => setFilter({ ...filter, type: RequestState.FAILED })} className={`px-2.5 py-1 rounded-full whitespace-nowrap ${filter.type === RequestState.FAILED ? 'bg-red-500/20 text-red-700 dark:text-red-400' : 'hover:bg-muted text-muted-foreground'}`}>Failed</button>
+            <button onClick={() => setFilter({ ...filter, type: RequestState.PROCESSING })} className={`px-2.5 py-1 rounded-full whitespace-nowrap ${filter.type === RequestState.PROCESSING ? 'bg-blue-500/20 text-blue-700 dark:text-blue-400' : 'hover:bg-muted text-muted-foreground'}`}>Processing</button>
+          </div>
         </div>
 
         {/* Scrollable list */}
@@ -75,21 +83,25 @@ export function RequestHistory() {
               <button
                 key={req.id}
                 onClick={() => setSelectedRequestId(req.id)}
-                className={`w-full text-left px-4 py-2.5 flex items-center justify-between transition-colors hover:bg-muted/45 cursor-pointer ${
+                className={`w-full text-left px-4 py-2.5 flex flex-col gap-2 transition-colors hover:bg-muted/45 cursor-pointer ${
                   selectedRequestId === req.id 
                     ? 'bg-blue-50/50 dark:bg-blue-950/20 border-l-2 border-blue-500 pl-3.5 font-bold' 
                     : ''
                 }`}
               >
-                <div className="flex flex-col gap-0.5">
+                <div className="flex w-full items-center justify-between">
                   <span className="font-semibold text-foreground">{req.id}</span>
-                  <span className="text-[9px] text-muted-foreground">Start: {req.startTime}ms</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold">{req.latency}ms</span>
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      req.status === RequestState.COMPLETED ? 'bg-emerald-500' : req.status === RequestState.FAILED ? 'bg-red-500' : 'bg-blue-500 animate-ping'
+                    }`} />
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold">{req.latency}ms</span>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    req.status === 'completed' ? 'bg-emerald-500' : req.status === 'failed' ? 'bg-red-500' : 'bg-blue-500 animate-ping'
-                  }`} />
+                <div className="p-2 bg-black/5 dark:bg-black/20 rounded-lg max-h-20 overflow-y-auto space-y-0.5 font-mono text-[9px] text-muted-foreground w-full">
+                  {req.logs.slice(-3).map((log, idx) => (
+                    <div key={idx} className="truncate">[{Math.round(log.timestamp)}ms] {log.nodeId}: {log.event}</div>
+                  ))}
                 </div>
               </button>
             ))
@@ -106,9 +118,9 @@ export function RequestHistory() {
               <div className="flex items-center gap-3">
                 <span className="text-sm font-extrabold text-foreground">{selectedRequest.id} Tracing Log</span>
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[9px] font-black uppercase ${getStatusColor(selectedRequest.status)}`}>
-                  {selectedRequest.status === 'completed' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
-                  {selectedRequest.status === 'failed' && <XCircle className="w-3 h-3 text-red-500" />}
-                  {selectedRequest.status === 'processing' && <Play className="w-3 h-3 text-blue-500 animate-pulse fill-current" />}
+                  {selectedRequest.status === RequestState.COMPLETED && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                  {selectedRequest.status === RequestState.FAILED && <XCircle className="w-3 h-3 text-red-500" />}
+                  {selectedRequest.status === RequestState.PROCESSING && <Play className="w-3 h-3 text-blue-500 animate-pulse fill-current" />}
                   <span>{selectedRequest.status}</span>
                 </span>
               </div>
@@ -137,30 +149,53 @@ export function RequestHistory() {
             {/* Trace Logs List */}
             <div className="flex-1 flex flex-col min-h-0 space-y-2">
               <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block">Detailed Distributed Log Stream</span>
-              <div className="flex-1 overflow-y-auto bg-black p-4 border border-zinc-800 rounded-2xl font-mono text-xs text-zinc-300 space-y-2 select-text">
-                {selectedRequest.log.map((logLine, idx) => (
-                  <div key={idx} className="flex gap-2.5 align-top leading-relaxed hover:text-white transition-colors">
-                    <span className="text-zinc-650 font-bold shrink-0 select-none">[{idx + 1}]</span>
-                    {logLine.includes('initiated') ? (
-                      <span className="text-blue-400 font-semibold">{logLine}</span>
-                    ) : logLine.includes('Arrived') ? (
-                      <span className="text-zinc-300">{logLine}</span>
-                    ) : logLine.includes('Cache Hit') ? (
-                      <span className="text-blue-400 font-bold">{logLine}</span>
-                    ) : logLine.includes('Cache Miss') ? (
-                      <span className="text-red-400 font-bold">{logLine}</span>
-                    ) : logLine.includes('Queue Overflow') || logLine.includes('overflow') || logLine.includes('dropped') ? (
-                      <span className="text-red-500 font-extrabold flex items-center gap-1">
-                        <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                        <span>{logLine}</span>
-                      </span>
-                    ) : logLine.includes('completed') ? (
-                      <span className="text-emerald-400 font-bold">{logLine}</span>
-                    ) : (
-                      <span>{logLine}</span>
-                    )}
+              <div className="flex-1 overflow-y-auto bg-black p-4 border border-zinc-800 rounded-2xl font-mono text-xs text-zinc-300 space-y-4 select-text custom-scrollbar">
+                <div className="relative">
+                  <div className="absolute top-2 bottom-2 left-[36px] w-px bg-zinc-800"></div>
+                  {selectedRequest.logs.map((log, idx) => {
+                    const time = `${Math.round(log.timestamp)}ms`;
+                    const msg = log.event;
+
+                    return (
+                      <div key={idx} className="relative flex gap-4 align-top leading-relaxed hover:bg-white/5 transition-colors p-1.5 -ml-1.5 rounded-lg group">
+                        <div className="w-[36px] text-right shrink-0 relative z-10 pt-0.5">
+                          <span className="text-[10px] font-bold text-zinc-500 group-hover:text-zinc-400 bg-black py-1">{time}</span>
+                        </div>
+                        <div className="absolute left-[36px] top-3 w-1.5 h-1.5 rounded-full bg-zinc-700 group-hover:bg-blue-500 border border-black transform -translate-x-1/2 z-10"></div>
+                        <div className="flex-1 text-zinc-400 pt-0.5">
+                          {msg.includes('initiated') || msg.includes('start') ? (
+                            <span className="text-blue-400 font-semibold">{msg}</span>
+                          ) : msg.includes('Arrived') || msg.includes('Queued') ? (
+                            <span className="text-zinc-300">{msg}</span>
+                          ) : msg.includes(RequestState.PROCESSING) ? (
+                            <span className="text-amber-400/90">{msg}</span>
+                          ) : msg.includes('Cache Hit') ? (
+                            <span className="text-blue-400 font-bold">{msg}</span>
+                          ) : msg.includes('Cache Miss') ? (
+                            <span className="text-red-400 font-bold">{msg}</span>
+                          ) : msg.includes('Queue Overflow') || msg.includes('overflow') || msg.includes('dropped') ? (
+                            <span className="text-red-500 font-extrabold flex items-center gap-1">
+                              <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                              <span>{msg}</span>
+                            </span>
+                          ) : msg.includes(RequestState.COMPLETED) || msg.includes('Processed by') ? (
+                            <span className="text-emerald-400 font-bold">{msg}</span>
+                          ) : (
+                            <span>{msg}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Total Traversal Time Footer */}
+                {selectedRequest.status === RequestState.COMPLETED && (
+                  <div className="mt-4 p-3 bg-emerald-950/30 border border-emerald-900/50 rounded-xl text-emerald-400 font-bold flex justify-between items-center text-sm">
+                    <span>Total Traversal Time</span>
+                    <span className="bg-emerald-500/20 px-2 py-1 rounded">{selectedRequest.latency}ms</span>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>

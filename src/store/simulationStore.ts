@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { SystemNode } from './canvasStore';
 import { Edge } from '@xyflow/react';
-import { SimRequest } from '@/simulation/types/Request';
+import { SimRequest } from '@/simulation/request/SimRequest';
+import { RequestState } from '@/simulation/request/RequestState';
 import { GraphBuilder } from '@/simulation/engine/GraphBuilder';
 
 export interface SimMetrics {
@@ -147,11 +148,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         const nextReq = { ...req, ...updates };
         
         // If request status transitions to completed or failed, update stats
-        if (req.status !== nextReq.status && (nextReq.status === 'completed' || nextReq.status === 'failed')) {
-          const isCompleted = nextReq.status === 'completed';
-          const nextCompleted = metrics.completed + (isCompleted ? 1 : 0);
-          const nextFailed = metrics.failed + (isCompleted ? 0 : 1);
-          const lat = nextReq.latency;
+        if (req.status !== nextReq.status && (nextReq.status === RequestState.COMPLETED || nextReq.status === RequestState.FAILED)) {
+          const isCompleted = nextReq.status === RequestState.COMPLETED;
+          const nextCompleted = isCompleted ? metrics.completed + 1 : metrics.completed;
+          const nextFailed = !isCompleted ? metrics.failed + 1 : metrics.failed;
+          const lat = nextReq.latency || 0;
           
           let nextMin = metrics.minLatency;
           let nextMax = metrics.maxLatency;
@@ -170,7 +171,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
           let nextHits = metrics.cacheHits;
           let nextMisses = metrics.cacheMisses;
           
-          const logStr = nextReq.log.join(', ');
+          const logStr = nextReq.logs.map((l: any) => l.event).join(', ');
           if (logStr.includes("Cache Hit")) {
             nextHits += 1;
           } else if (logStr.includes("Cache Miss")) {

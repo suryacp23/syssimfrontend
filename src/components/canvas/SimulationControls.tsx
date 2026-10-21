@@ -5,10 +5,12 @@ import { useSimulationStore } from '@/store/simulationStore';
 import { useCanvasStore } from '@/store/canvasStore';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, RotateCcw, AlertTriangle, Activity, Zap } from 'lucide-react';
-import { simulatorInstance } from '@/simulation/engine/Simulator';
+import { simulatorInstance } from '@/simulation/engine/SimulationEngine';
 import { useMetricsStore } from '@/store/metricsStore';
+import { useScalingStore } from '@/store/scalingStore';
 import { FailurePanel } from '../failure/FailurePanel';
 import { LoadPanel } from '../scaling/LoadPanel';
+import { GraphBuilder } from '@/simulation/engine/GraphBuilder';
 
 export function SimulationControls() {
   const { 
@@ -51,10 +53,43 @@ export function SimulationControls() {
   const nodes = activeProjectId ? projects[activeProjectId]?.nodes || [] : [];
   const edges = activeProjectId ? projects[activeProjectId]?.edges || [] : [];
 
-  const handleRun = () => {
-    const ok = startSimulation(nodes, edges);
-    if (ok) {
-      simulatorInstance.init(nodes, edges);
+  const [isGeneratingLoad, setIsGeneratingLoad] = React.useState(false);
+  const [loadProgress, setLoadProgress] = React.useState<number | null>(null);
+  const { virtualUsers, requestsPerVu, trafficPattern, clearGenerationLogs, addGenerationLog } = useScalingStore();
+  
+  // No longer using Web Worker due to Turbopack hot-reload issues.
+  // We use LoadGenerator.generateAsync which yields to the main thread instead.
+
+  const handleRun = async () => {
+    const errors = GraphBuilder.validate(nodes, edges);
+    if (errors.length > 0) {
+      useSimulationStore.getState().setValidationErrors(errors);
+      return;
+    }
+    useSimulationStore.getState().setValidationErrors([]);
+
+    const clientNode = nodes.find(n => n.data?.type === 'client');
+    if (clientNode) {
+      setIsGeneratingLoad(true);
+      clearGenerationLogs();
+      
+      try {
+        const ok = startSimulation(nodes, edges);
+        if (ok) {
+          simulatorInstance.init(nodes, edges);
+        }
+      } catch (err) {
+        console.error("Load Generation failed:", err);
+      } finally {
+        setIsGeneratingLoad(false);
+        setLoadProgress(null);
+      }
+    } else {
+      // Fallback or if no client node
+      const ok = startSimulation(nodes, edges);
+      if (ok) {
+        simulatorInstance.init(nodes, edges);
+      }
     }
   };
 
@@ -126,10 +161,20 @@ export function SimulationControls() {
             <Button 
               onClick={handleRun}
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+              disabled={isGeneratingLoad}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors disabled:opacity-50"
             >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Run Simulation</span>
+              {isGeneratingLoad ? (
+                <>
+                  <Activity className="w-3.5 h-3.5 animate-spin" />
+                  <span>{loadProgress ? `Generating ${loadProgress.toLocaleString()}...` : 'Generating Load...'}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Run Simulation</span>
+                </>
+              )}
             </Button>
             
             <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />

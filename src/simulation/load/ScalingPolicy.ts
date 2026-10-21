@@ -18,6 +18,6 @@ export const DEFAULT_SCALING_POLICY: ScalingPolicy = {
   threshold: 70,
   minReplicas: 1,
   maxReplicas: 5,
-  scaleOutCooldownMs: 5000,
-  scaleInCooldownMs: 5000,
+  scaleOutCooldownMs: 2000,
+  scaleInCooldownMs: 3000,
 };

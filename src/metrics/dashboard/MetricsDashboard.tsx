@@ -17,7 +17,7 @@ import {
   X, Download, Activity, AlertTriangle, TrendingUp, BarChart3, Database, Timer, 
   CheckSquare, History, Play, Pause, RotateCcw, Columns, RefreshCw, Clock, ShieldAlert
 } from 'lucide-react';
-import { simulatorInstance } from '@/simulation/engine/Simulator';
+import { simulatorInstance } from '@/simulation/engine/SimulationEngine';
 
 export function MetricsDashboard() {
   const { 

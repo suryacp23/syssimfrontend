@@ -38,6 +38,16 @@ export class NodeResourceManager {
         baseQueue = 100;
         baseMemory = 512;
         break;
+      case 'client':
+        baseWorkers = 100000;
+        baseQueue = 1000000;
+        baseMemory = 1024;
+        break;
+      case 'loadBalancer':
+        baseWorkers = 5000;
+        baseQueue = 50000;
+        baseMemory = 1024;
+        break;
       case 'queue':
       case 'kafka':
         baseWorkers = 500;
